@@ -1,0 +1,13 @@
+# cargo-deny policy for the Tauri shell. Run: cargo deny --target x86_64-pc-windows-msvc check
+[graph]
+targets = ["x86_64-pc-windows-msvc"]
+
+[licenses]
+# Permissive licences plus MPL-2.0 (file-level copyleft; notices are shipped with the installer).
+allow = [
+  "MIT", "MIT-0", "Apache-2.0", "BSD-3-Clause", "ISC", "Zlib",
+  "Unicode-3.0", "Unlicense", "0BSD", "CC0-1.0", "BSL-1.0", "CDLA-Permissive-2.0", "MPL-2.0",
+]
+
+[advisories]
+version = 2

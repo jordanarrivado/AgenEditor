@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+/*
+ * AgenEditor design tokens (spec §2). Components use the token utilities
+ * (bg-surface, text-fg-2, border-line, text-accent …) — never raw hex.
+ */
+@theme inline {
+  --color-app: var(--bg-app);
+  --color-sidebar: var(--bg-sidebar);
+  --color-surface: var(--bg-surface);
+  --color-elevated: var(--bg-elevated);
+  --color-line: var(--border);
+  --color-line-subtle: var(--border-subtle);
+  --color-fg: var(--text-primary);
+  --color-fg-2: var(--text-secondary);
+  --color-fg-3: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--on-accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-track-video: var(--track-video);
+  --color-track-broll: var(--track-broll);
+  --color-track-audio: var(--track-audio);
+  --color-track-caption: var(--track-caption);
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --bg-app: #0B0F15;
+    --bg-sidebar: #10161F;
+    --bg-surface: #151D29;
+    --bg-elevated: #1C2634;
+    --border: #2B3748;
+    --border-subtle: #1e2837;
+    --text-primary: #F3F6FC;
+    --text-secondary: #A6B4C7;
+    --text-muted: #8292A7;
+    --accent: #84A9FF;
+    --accent-hover: #A7C2FF;
+    --on-accent: #0B0F15;
+    --success: #4DC6A0;
+    --warning: #F2BE6B;
+    --danger: #F07C82;
+    --track-video: #5E88D7;
+    --track-broll: #5CABC8;
+    --track-audio: #6BAE9B;
+    --track-caption: #C5A56C;
+  }
+
+  /* Light theme (Settings → General → Theme). Track colours stay identical so
+     the timeline reads the same in both themes. */
+  :root[data-theme='light'] {
+    color-scheme: light;
+    --bg-app: #EEF1F6;
+    --bg-sidebar: #F7F9FC;
+    --bg-surface: #FFFFFF;
+    --bg-elevated: #E6EBF3;
+    --border: #CBD4E1;
+    --border-subtle: #DDE3EC;
+    --text-primary: #111827;
+    --text-secondary: #3E4C61;
+    --text-muted: #5B6A80;
+    --accent: #3461D1;
+    --accent-hover: #244CB3;
+    --on-accent: #FFFFFF;
+    --success: #13865F;
+    --warning: #9A6200;
+    --danger: #C23A43;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--bg-app);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Visible keyboard focus everywhere (spec §11). */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg-app); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+}
+
+/* Reduced motion: honoured from the OS and from the in-app setting. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+:root[data-reduced-motion='true'] *,
+:root[data-reduced-motion='true'] *::before,
+:root[data-reduced-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}

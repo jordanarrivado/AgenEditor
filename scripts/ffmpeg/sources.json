@@ -1,0 +1,70 @@
+{
+  "_note": "Exact inputs of AgenEditor's bundled FFmpeg. Hashes were cross-checked on 2026-11-11; change a version only together with its sha256. See docs/FFMPEG_BUILD.md.",
+  "image": "debian@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2",
+  "sources": [
+    {
+      "name": "ffmpeg",
+      "version": "9.0.2",
+      "license": "GPL-2.0-or-later (as configured with --enable-gpl)",
+      "url": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+      "file": "ffmpeg-9.0.2.tar.xz",
+      "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e"
+    },
+    {
+      "name": "x264",
+      "version": "stable@b35605ace3ddf7c1a5d67a2eb553f034aef41d55",
+      "license": "GPL-2.0-or-later",
+      "url": "https://code.videolan.org/videolan/x264/-/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55/x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.bz2",
+      "file": "x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.bz2",
+      "sha256": "6eeb82934e69fd51e043bd8c5b0d152839638d1ce7aa4eea65a3fedcf83ff224"
+    },
+    {
+      "name": "dav1d",
+      "version": "1.5.4",
+      "license": "BSD-2-Clause",
+      "url": "https://downloads.videolan.org/pub/videolan/dav1d/1.5.4/dav1d-1.5.4.tar.xz",
+      "file": "dav1d-1.5.4.tar.xz",
+      "sha256": "686616b7c69eb88d44459391ab25cac13b6647a3b288835c5784e71c1514a5c5"
+    },
+    {
+      "name": "libass",
+      "version": "0.17.5",
+      "license": "ISC",
+      "url": "https://github.com/libass/libass/releases/download/0.17.5/libass-0.17.5.tar.xz",
+      "file": "libass-0.17.5.tar.xz",
+      "sha256": "2dca25c0e0c837ddf00b52011b3f82cac1e4ddd3ad018227806b0c2288864acc"
+    },
+    {
+      "name": "freetype",
+      "version": "2.15.0",
+      "license": "FTL OR GPL-2.0-or-later",
+      "url": "https://downloads.sourceforge.net/project/freetype/freetype2/2.15.0/freetype-2.15.0.tar.xz",
+      "file": "freetype-2.15.0.tar.xz",
+      "sha256": "93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5"
+    },
+    {
+      "name": "fribidi",
+      "version": "1.0.18",
+      "license": "LGPL-2.1-or-later",
+      "url": "https://github.com/fribidi/fribidi/releases/download/v1.0.18/fribidi-1.0.18.tar.xz",
+      "file": "fribidi-1.0.18.tar.xz",
+      "sha256": "1de5e8073d035388b71d0b2d452b1da1f8caeea8a7702997b401fe1b6250727f"
+    },
+    {
+      "name": "harfbuzz",
+      "version": "15.1.0",
+      "license": "MIT",
+      "url": "https://github.com/harfbuzz/harfbuzz/releases/download/15.1.0/harfbuzz-15.1.0.tar.xz",
+      "file": "harfbuzz-15.1.0.tar.xz",
+      "sha256": "0fc7c565443a5f4be7da65ac5ee5bd737d9b158dc908708b7689a0a5796b0c8d"
+    },
+    {
+      "name": "zlib",
+      "version": "1.4",
+      "license": "Zlib",
+      "url": "https://github.com/madler/zlib/releases/download/v1.4/zlib-1.4.tar.xz",
+      "file": "zlib-1.4.tar.xz",
+      "sha256": "4f11c512053d7bab8d9e9b89bde3575add3e4c50a383b42ef6cb837035fc5a7c"
+    }
+  ]
+}

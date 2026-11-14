@@ -1,0 +1,94 @@
+{
+  "$defs": {
+    "BriefItem": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 300,
+          "title": "Note",
+          "type": "string"
+        },
+        "status": {
+          "default": "open",
+          "enum": [
+            "open",
+            "met",
+            "waived"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "title": "BriefItem",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/project_brief.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "brief_text": {
+      "default": "",
+      "maxLength": 20000,
+      "title": "Brief Text",
+      "type": "string"
+    },
+    "checklist": {
+      "items": {
+        "$ref": "#/$defs/BriefItem"
+      },
+      "maxItems": 50,
+      "title": "Checklist",
+      "type": "array"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "reference_note": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Reference Note",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "script_text": {
+      "default": "",
+      "maxLength": 20000,
+      "title": "Script Text",
+      "type": "string"
+    },
+    "version": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "project_id"
+  ],
+  "title": "ProjectBrief",
+  "type": "object"
+}

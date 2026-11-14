@@ -1,0 +1,204 @@
+{
+  "$defs": {
+    "EngineError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "details": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "maxLength": 2000,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "EngineError",
+      "type": "object"
+    },
+    "ErrorCode": {
+      "description": "Structured error codes returned by engine services and MCP tools (spec \u00a76).",
+      "enum": [
+        "ASSET_NOT_FOUND",
+        "RANGE_OUT_OF_BOUNDS",
+        "REVISION_CONFLICT",
+        "SOURCE_CHANGED",
+        "UNSUPPORTED_CODEC",
+        "RENDER_FAILED",
+        "QA_FAILED",
+        "PERMISSION_DENIED",
+        "INVALID_TIMELINE",
+        "PROBE_FAILED",
+        "PROJECT_NOT_FOUND",
+        "JOB_NOT_FOUND",
+        "JOB_CANCELED",
+        "INVALID_ARGUMENT",
+        "TRANSCRIPTION_FAILED",
+        "TRANSCRIPT_NOT_FOUND",
+        "SOURCE_INSUFFICIENT",
+        "PLAN_RETRY_LIMIT",
+        "OUT_OF_CONTEXT",
+        "INSUFFICIENT_DISK"
+      ],
+      "title": "ErrorCode",
+      "type": "string"
+    },
+    "JobKind": {
+      "enum": [
+        "probe",
+        "transcribe",
+        "preview_render",
+        "final_render",
+        "qa"
+      ],
+      "title": "JobKind",
+      "type": "string"
+    },
+    "JobStatus": {
+      "enum": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "canceled",
+        "interrupted"
+      ],
+      "title": "JobStatus",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/job.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "ended_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ended At"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EngineError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/JobKind"
+    },
+    "output_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output Path"
+    },
+    "progress": {
+      "default": 0.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Progress",
+      "type": "number"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "started_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Started At"
+    },
+    "status": {
+      "$ref": "#/$defs/JobStatus",
+      "default": "queued"
+    },
+    "timeline_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Timeline Revision"
+    }
+  },
+  "required": [
+    "id",
+    "project_id",
+    "kind"
+  ],
+  "title": "Job",
+  "type": "object"
+}

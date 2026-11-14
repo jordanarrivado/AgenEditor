@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ffmpeg:
+    name: Pinned FFmpeg (Linux cross-build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: .tools/ffmpeg
+          key: ffmpeg-${{ hashFiles('scripts/ffmpeg/**', 'scripts/build_ffmpeg.py', 'docs/FFMPEG_BUILD.md') }}
+      - name: Build from pinned, hash-checked sources
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: python3 scripts/build_ffmpeg.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-build
+          path: .tools/ffmpeg/
+
+  engine:
+    name: Engine (Python, Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install FFmpeg
+        run: choco install ffmpeg --no-progress -y
+      - name: Sync
+        run: uv sync --locked --extra transcribe
+      - name: Lint
+        run: |
+          uv run ruff check packages tests/engine scripts
+          uv run ruff format --check packages tests/engine scripts
+      - name: Test (generates fixture media)
+        run: uv run pytest
+      - name: Licence report (informational; the release workflow enforces it)
+        run: uv run python scripts/license_report.py --out license-report.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: license-report
+          path: license-report.md
+
+  ui:
+    name: Static UI (Node, Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Playwright
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e -- demo-workflow
+
+  native:
+    name: Packaged Windows engine and desktop
+    needs: [engine, ui, ffmpeg]
+    runs-on: windows-latest
+    env:
+      AGENEDITOR_REQUIRE_PINNED_FFMPEG: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: choco install ffmpeg --no-progress -y  # fixture generation; the installer bundles the pinned build
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-build
+          path: .tools/ffmpeg
+      - name: Verify pinned FFmpeg on Windows
+        run: uv run python scripts/build_ffmpeg.py --verify-only
+      - run: npm ci
+      - run: npm run desktop:build
+      - name: Packaged engine integration
+        run: |
+          uv run ageneditor fixtures
+          uv run --extra transcribe ageneditor cache-model tiny
+          uv run python scripts/smoke_packaged.py --engine apps/desktop/src-tauri/target/release/ageneditor-engine.exe --media tests/fixtures/media/talking_head_16x9_30fps_60s.mp4 --out .tools/packaged-smoke --transcribe-preset tiny
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-verification
+          retention-days: 7
+          path: |
+            .tools/packaged-smoke/result.json
+            .tools/packaged-smoke/service.log
+            apps/desktop/src-tauri/resources/third-party/inventory.json

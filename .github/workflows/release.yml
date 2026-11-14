@@ -1,0 +1,187 @@
+name: Release (Windows beta)
+
+# Tag `vX.Y.Z` to build a draft release. A maintainer reviews and publishes it by hand.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The installer bundles the pinned FFmpeg built by the `ffmpeg` job (docs/FFMPEG_BUILD.md); its complete
+# corresponding source is attached to every draft release.
+
+jobs:
+  ffmpeg:
+    name: Pinned FFmpeg (Linux cross-build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: .tools/ffmpeg
+          key: ffmpeg-${{ hashFiles('scripts/ffmpeg/**', 'scripts/build_ffmpeg.py', 'docs/FFMPEG_BUILD.md') }}
+      - name: Build from pinned, hash-checked sources
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: python3 scripts/build_ffmpeg.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-build
+          path: .tools/ffmpeg/
+
+  verify:
+    name: Tests, lint and licence inventory
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install FFmpeg
+        run: choco install ffmpeg --no-progress -y
+      - run: uv sync --locked --extra transcribe
+      - name: Lint
+        run: |
+          uv run ruff check packages tests/engine scripts
+          uv run ruff format --check packages tests/engine scripts
+      - name: Engine tests
+        run: uv run pytest
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Browser regression checks
+        run: |
+          npx playwright install chromium
+          npm run test:e2e -- demo-workflow
+      - name: Licence inventory (publication has a separate gate)
+        run: uv run python scripts/license_report.py --out license-report.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: license-report
+          path: license-report.md
+
+  build:
+    name: Build Windows installer
+    needs: [verify, ffmpeg]
+    runs-on: windows-latest
+    env:
+      HAS_SIGNING_CERT: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 != '' }}
+      AGENEDITOR_REQUIRE_PINNED_FFMPEG: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install FFmpeg (fixture generation only; the installer bundles the pinned build)
+        run: choco install ffmpeg --no-progress -y
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-build
+          path: .tools/ffmpeg
+      - name: Verify pinned FFmpeg on Windows
+        run: uv run python scripts/build_ffmpeg.py --verify-only
+      - run: npm ci
+      - name: Build sidecar and NSIS installer
+        run: npm run desktop:build
+      - name: Exercise packaged engine with isolated PATH
+        run: |
+          uv run ageneditor fixtures
+          uv run --extra transcribe ageneditor cache-model tiny
+          uv run python scripts/smoke_packaged.py --engine apps/desktop/src-tauri/target/release/ageneditor-engine.exe --media tests/fixtures/media/talking_head_16x9_30fps_60s.mp4 --out .tools/packaged-smoke --transcribe-preset tiny
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: packaged-smoke
+          path: |
+            .tools/packaged-smoke/result.json
+            .tools/packaged-smoke/service.log
+            apps/desktop/src-tauri/resources/third-party/
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item apps/desktop/src-tauri/target/release/bundle/nsis/*.exe release/
+          uv run ageneditor system --no-hw-probe > release/build-environment.json
+          Copy-Item .tools/ffmpeg/ffmpeg-corresponding-source.tar release/
+          Copy-Item .tools/ffmpeg/build-info.json release/ffmpeg-build-info.json
+      - name: Sign installer (only when a certificate is configured)
+        if: env.HAS_SIGNING_CERT == 'true'
+        shell: pwsh
+        env:
+          SIGNING_CERT: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+          SIGNING_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT))
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+            if (-not $signtool) { throw "Windows signing tool missing" }
+            Get-ChildItem release/*.exe | ForEach-Object {
+              & $signtool.FullName sign /f $pfx /p $env:SIGNING_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $_.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signing failed for $($_.Name)" }
+              & $signtool.FullName verify /pa $_.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signature verification failed" }
+            }
+          } finally {
+            Remove-Item -LiteralPath $pfx -ErrorAction SilentlyContinue
+          }
+      - name: Record signing status
+        shell: pwsh
+        run: |
+          $signed = (Get-AuthenticodeSignature (Get-ChildItem release/*.exe | Select-Object -First 1).FullName).Status
+          "Authenticode status: $signed" | Out-File release/SIGNING.txt -Encoding utf8
+      - name: Checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem release -File | Where-Object Name -ne "SHA256SUMS.txt" | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Out-File release/SHA256SUMS.txt -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: release/
+
+  publication-gate:
+    name: Explicit publication and evidence gate
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run python scripts/release_readiness.py
+      - run: uv sync --locked --extra transcribe
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-build
+          path: .tools/ffmpeg
+      - name: Verify pinned FFmpeg on Windows
+        run: uv run python scripts/build_ffmpeg.py --verify-only
+      - run: uv run python scripts/license_report.py --check
+
+  draft-release:
+    name: Draft GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, publication-gate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create draft (never auto-published)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --prerelease \
+            --title "AgenEditor $GITHUB_REF_NAME (beta)" \
+            --notes "Draft build. Complete docs/RELEASE_CHECKLIST.md before publishing." \
+            dist/windows-installer/* dist/license-report/*

@@ -1,0 +1,38 @@
+{
+  "_note": "Upstream repository licence files (fetched 2026-11-11, default branch) for components whose published package ships no licence text. Used by collect_notices.py only when the package itself has none.",
+  "python-ctranslate2": [
+    "OpenNMT__CTranslate2__LICENSE",
+    "intel__openmp__LICENSE.txt"
+  ],
+  "python-flatbuffers": [
+    "google__flatbuffers__LICENSE"
+  ],
+  "python-tokenizers": [
+    "huggingface__tokenizers__LICENSE"
+  ],
+  "npm-node_modules/react-remove-scroll-bar": [
+    "theKashey__react-remove-scroll-bar__LICENSE"
+  ],
+  "rust-alloc-stdlib": [
+    "dropbox__rust-alloc-no-stdlib__LICENSE"
+  ],
+  "rust-plist": [
+    "ebarnard__rust-plist__LICENCE"
+  ],
+  "rust-selectors": [
+    "servo__servo__LICENSE"
+  ],
+  "rust-tauri-plugin": [
+    "tauri-apps__tauri__LICENSE-MIT",
+    "tauri-apps__tauri__LICENSE-APACHE-2.0"
+  ],
+  "rust-webview2-com": [
+    "wravery__webview2-rs__LICENSE"
+  ],
+  "rust-webview2-com-macros": [
+    "wravery__webview2-rs__LICENSE"
+  ],
+  "rust-webview2-com-sys": [
+    "wravery__webview2-rs__LICENSE"
+  ]
+}

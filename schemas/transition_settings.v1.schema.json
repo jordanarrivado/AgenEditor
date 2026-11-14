@@ -1,0 +1,34 @@
+{
+  "$defs": {
+    "TransitionStyle": {
+      "enum": [
+        "classic",
+        "modern",
+        "montage",
+        "cinematic"
+      ],
+      "title": "TransitionStyle",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/transition_settings.v1.json",
+  "additionalProperties": false,
+  "description": "Workspace-wide: which styles the editor agent may use. Only the person changes it.",
+  "properties": {
+    "active_styles": {
+      "items": {
+        "$ref": "#/$defs/TransitionStyle"
+      },
+      "title": "Active Styles",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "title": "TransitionSettings",
+  "type": "object"
+}

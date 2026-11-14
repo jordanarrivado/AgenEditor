@@ -1,0 +1,631 @@
+{
+  "$defs": {
+    "AddOverlay": {
+      "additionalProperties": false,
+      "description": "Place a registered B-roll (V2), music (A2) or sound-effect (A3) asset. V1 uses plans and trims.",
+      "properties": {
+        "clip": {
+          "$ref": "#/$defs/Clip"
+        },
+        "op": {
+          "const": "add_overlay",
+          "default": "add_overlay",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clip"
+      ],
+      "title": "AddOverlay",
+      "type": "object"
+    },
+    "AudioMix": {
+      "additionalProperties": false,
+      "description": "Bounded mix settings compiled into fixed FFmpeg filters (spec \u00a710 audio target).",
+      "properties": {
+        "duck_attack_ms": {
+          "default": 20,
+          "maximum": 2000,
+          "minimum": 1,
+          "title": "Duck Attack Ms",
+          "type": "integer"
+        },
+        "duck_music": {
+          "default": true,
+          "title": "Duck Music",
+          "type": "boolean"
+        },
+        "duck_ratio": {
+          "default": 8.0,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Duck Ratio",
+          "type": "number"
+        },
+        "duck_release_ms": {
+          "default": 400,
+          "maximum": 9000,
+          "minimum": 10,
+          "title": "Duck Release Ms",
+          "type": "integer"
+        },
+        "duck_threshold_db": {
+          "default": -30.0,
+          "maximum": -6,
+          "minimum": -60,
+          "title": "Duck Threshold Db",
+          "type": "number"
+        },
+        "edge_fade_ms": {
+          "default": 12,
+          "maximum": 200,
+          "minimum": 0,
+          "title": "Edge Fade Ms",
+          "type": "integer"
+        },
+        "normalize": {
+          "default": true,
+          "title": "Normalize",
+          "type": "boolean"
+        }
+      },
+      "title": "AudioMix",
+      "type": "object"
+    },
+    "BuildCaptions": {
+      "additionalProperties": false,
+      "description": "(Re)derive captions from transcript words mapped through the current cuts.\n\n``transcript_ids`` pins which transcript to use per primary asset; otherwise the newest transcript\nof the unchanged source is used. ``enabled=False`` removes captions.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "op": {
+          "const": "build_captions",
+          "default": "build_captions",
+          "title": "Op",
+          "type": "string"
+        },
+        "transcript_ids": {
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Transcript Ids",
+          "type": "array"
+        }
+      },
+      "title": "BuildCaptions",
+      "type": "object"
+    },
+    "CaptionPreset": {
+      "description": "Enumerated burn-in styles (two lines max, phone-safe margins). Never free-form ASS/filters.",
+      "enum": [
+        "clean_white",
+        "bold_yellow",
+        "boxed"
+      ],
+      "title": "CaptionPreset",
+      "type": "string"
+    },
+    "Clip": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "clip_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "fade_in_frames": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Fade In Frames",
+          "type": "integer"
+        },
+        "fade_out_frames": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Fade Out Frames",
+          "type": "integer"
+        },
+        "fit_mode": {
+          "$ref": "#/$defs/FitMode",
+          "default": "cover"
+        },
+        "gain_db": {
+          "default": 0.0,
+          "maximum": 12,
+          "minimum": -60,
+          "title": "Gain Db",
+          "type": "number"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        },
+        "source_in_frames": {
+          "minimum": 0,
+          "title": "Source In Frames",
+          "type": "integer"
+        },
+        "source_out_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Source Out Frames",
+          "type": "integer"
+        },
+        "timeline_duration_frames": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeline Duration Frames"
+        },
+        "timeline_in_frames": {
+          "minimum": 0,
+          "title": "Timeline In Frames",
+          "type": "integer"
+        },
+        "track": {
+          "$ref": "#/$defs/TrackId"
+        },
+        "transform": {
+          "$ref": "#/$defs/Transform"
+        }
+      },
+      "required": [
+        "clip_id",
+        "asset_id",
+        "track",
+        "source_in_frames",
+        "source_out_frames",
+        "timeline_in_frames"
+      ],
+      "title": "Clip",
+      "type": "object"
+    },
+    "ColorPreset": {
+      "description": "Fixed, gentle grade presets applied after compositing. ``none`` leaves pixels untouched.",
+      "enum": [
+        "none",
+        "natural",
+        "warm",
+        "cool"
+      ],
+      "title": "ColorPreset",
+      "type": "string"
+    },
+    "CorrectWord": {
+      "additionalProperties": false,
+      "description": "Fix one word's caption text. ``text=None`` removes an earlier correction.",
+      "properties": {
+        "op": {
+          "const": "correct_word",
+          "default": "correct_word",
+          "title": "Op",
+          "type": "string"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "transcript_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Transcript Id",
+          "type": "string"
+        },
+        "word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Word Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transcript_id",
+        "word_id"
+      ],
+      "title": "CorrectWord",
+      "type": "object"
+    },
+    "FitMode": {
+      "enum": [
+        "cover",
+        "contain"
+      ],
+      "title": "FitMode",
+      "type": "string"
+    },
+    "MoveClip": {
+      "additionalProperties": false,
+      "description": "Reorder a primary (V1) clip; later V1 clips ripple so the track stays gap-free.",
+      "properties": {
+        "clip_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "move_clip",
+          "default": "move_clip",
+          "title": "Op",
+          "type": "string"
+        },
+        "to_index": {
+          "maximum": 99,
+          "minimum": 0,
+          "title": "To Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "clip_id",
+        "to_index"
+      ],
+      "title": "MoveClip",
+      "type": "object"
+    },
+    "RemoveClip": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "remove_clip",
+          "default": "remove_clip",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "title": "RemoveClip",
+      "type": "object"
+    },
+    "SetAudioMix": {
+      "additionalProperties": false,
+      "properties": {
+        "audio": {
+          "$ref": "#/$defs/AudioMix"
+        },
+        "op": {
+          "const": "set_audio_mix",
+          "default": "set_audio_mix",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "audio"
+      ],
+      "title": "SetAudioMix",
+      "type": "object"
+    },
+    "SetCaptionPreset": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_caption_preset",
+          "default": "set_caption_preset",
+          "title": "Op",
+          "type": "string"
+        },
+        "preset": {
+          "$ref": "#/$defs/CaptionPreset"
+        }
+      },
+      "required": [
+        "preset"
+      ],
+      "title": "SetCaptionPreset",
+      "type": "object"
+    },
+    "SetClipAudio": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "fade_in_frames": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fade In Frames"
+        },
+        "fade_out_frames": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fade Out Frames"
+        },
+        "gain_db": {
+          "anyOf": [
+            {
+              "maximum": 12,
+              "minimum": -60,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gain Db"
+        },
+        "op": {
+          "const": "set_clip_audio",
+          "default": "set_clip_audio",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clip_id"
+      ],
+      "title": "SetClipAudio",
+      "type": "object"
+    },
+    "SetColorPreset": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "const": "set_color_preset",
+          "default": "set_color_preset",
+          "title": "Op",
+          "type": "string"
+        },
+        "preset": {
+          "$ref": "#/$defs/ColorPreset"
+        }
+      },
+      "required": [
+        "preset"
+      ],
+      "title": "SetColorPreset",
+      "type": "object"
+    },
+    "SetTransform": {
+      "additionalProperties": false,
+      "description": "Punch-in / crop controls. Bounded by ``Transform`` (scale 1.0-2.0, centre 0-1).",
+      "properties": {
+        "clip_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "fit_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FitMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "op": {
+          "const": "set_transform",
+          "default": "set_transform",
+          "title": "Op",
+          "type": "string"
+        },
+        "transform": {
+          "$ref": "#/$defs/Transform"
+        }
+      },
+      "required": [
+        "clip_id",
+        "transform"
+      ],
+      "title": "SetTransform",
+      "type": "object"
+    },
+    "TrackId": {
+      "enum": [
+        "V1",
+        "V2",
+        "A1",
+        "A2",
+        "A3",
+        "T1"
+      ],
+      "title": "TrackId",
+      "type": "string"
+    },
+    "Transform": {
+      "additionalProperties": false,
+      "properties": {
+        "center_x": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Center X",
+          "type": "number"
+        },
+        "center_y": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Center Y",
+          "type": "number"
+        },
+        "scale": {
+          "default": 1.0,
+          "maximum": 2.0,
+          "minimum": 1.0,
+          "title": "Scale",
+          "type": "number"
+        }
+      },
+      "title": "Transform",
+      "type": "object"
+    },
+    "TrimClip": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "trim_clip",
+          "default": "trim_clip",
+          "title": "Op",
+          "type": "string"
+        },
+        "source_in_frames": {
+          "minimum": 0,
+          "title": "Source In Frames",
+          "type": "integer"
+        },
+        "source_out_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Source Out Frames",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "clip_id",
+        "source_in_frames",
+        "source_out_frames"
+      ],
+      "title": "TrimClip",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/revision_patch.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "ops": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "add_overlay": "#/$defs/AddOverlay",
+            "build_captions": "#/$defs/BuildCaptions",
+            "correct_word": "#/$defs/CorrectWord",
+            "move_clip": "#/$defs/MoveClip",
+            "remove_clip": "#/$defs/RemoveClip",
+            "set_audio_mix": "#/$defs/SetAudioMix",
+            "set_caption_preset": "#/$defs/SetCaptionPreset",
+            "set_clip_audio": "#/$defs/SetClipAudio",
+            "set_color_preset": "#/$defs/SetColorPreset",
+            "set_transform": "#/$defs/SetTransform",
+            "trim_clip": "#/$defs/TrimClip"
+          },
+          "propertyName": "op"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/TrimClip"
+          },
+          {
+            "$ref": "#/$defs/RemoveClip"
+          },
+          {
+            "$ref": "#/$defs/MoveClip"
+          },
+          {
+            "$ref": "#/$defs/SetTransform"
+          },
+          {
+            "$ref": "#/$defs/SetClipAudio"
+          },
+          {
+            "$ref": "#/$defs/AddOverlay"
+          },
+          {
+            "$ref": "#/$defs/CorrectWord"
+          },
+          {
+            "$ref": "#/$defs/BuildCaptions"
+          },
+          {
+            "$ref": "#/$defs/SetCaptionPreset"
+          },
+          {
+            "$ref": "#/$defs/SetColorPreset"
+          },
+          {
+            "$ref": "#/$defs/SetAudioMix"
+          }
+        ]
+      },
+      "maxItems": 20,
+      "minItems": 1,
+      "title": "Ops",
+      "type": "array"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "summary": {
+      "maxLength": 500,
+      "minLength": 3,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "project_id",
+    "summary",
+    "ops"
+  ],
+  "title": "RevisionPatch",
+  "type": "object"
+}

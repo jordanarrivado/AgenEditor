@@ -1,0 +1,137 @@
+{
+  "$defs": {
+    "AcceptedIssue": {
+      "additionalProperties": false,
+      "description": "A person's decision to use a linked file despite a known problem.",
+      "properties": {
+        "asset_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "note": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "note"
+      ],
+      "title": "AcceptedIssue",
+      "type": "object"
+    },
+    "AssetRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "aspect": {
+          "default": "9:16",
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Aspect",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "video"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "prompt": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "purpose": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Purpose",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "prompt"
+      ],
+      "title": "AssetRequest",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/asset_checklist.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "accepted": {
+      "patternProperties": {
+        "^[a-z0-9][a-z0-9_\\-]{0,63}$": {
+          "$ref": "#/$defs/AcceptedIssue"
+        }
+      },
+      "title": "Accepted",
+      "type": "object"
+    },
+    "configured": {
+      "default": false,
+      "title": "Configured",
+      "type": "boolean"
+    },
+    "links": {
+      "patternProperties": {
+        "^[a-z0-9][a-z0-9_\\-]{0,63}$": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "const": "dropped",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "title": "Links",
+      "type": "object"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "requests": {
+      "items": {
+        "$ref": "#/$defs/AssetRequest"
+      },
+      "maxItems": 100,
+      "title": "Requests",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "version": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "project_id"
+  ],
+  "title": "AssetChecklist",
+  "type": "object"
+}

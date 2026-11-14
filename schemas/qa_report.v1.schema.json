@@ -1,0 +1,134 @@
+{
+  "$defs": {
+    "CheckKind": {
+      "enum": [
+        "technical",
+        "editorial"
+      ],
+      "title": "CheckKind",
+      "type": "string"
+    },
+    "CheckStatus": {
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skipped"
+      ],
+      "title": "CheckStatus",
+      "type": "string"
+    },
+    "QACheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected"
+        },
+        "kind": {
+          "$ref": "#/$defs/CheckKind",
+          "default": "technical"
+        },
+        "measured": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Measured"
+        },
+        "message": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Message",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CheckStatus"
+        }
+      },
+      "required": [
+        "check_id",
+        "status"
+      ],
+      "title": "QACheck",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/qa_report.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/QACheck"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "overall": {
+      "$ref": "#/$defs/CheckStatus",
+      "description": "FAIL if any technical check failed; WARN if anything warned or was skipped; else PASS.",
+      "readOnly": true
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "timeline_revision": {
+      "minimum": 0,
+      "title": "Timeline Revision",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "job_id",
+    "project_id",
+    "timeline_revision",
+    "checks",
+    "overall"
+  ],
+  "title": "QAReport",
+  "type": "object"
+}

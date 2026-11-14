@@ -1,0 +1,148 @@
+{
+  "$defs": {
+    "Sound": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "default": "",
+          "maxLength": 200,
+          "title": "Category",
+          "type": "string"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "file": {
+          "maxLength": 255,
+          "title": "File",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "title": "Name",
+          "type": "string"
+        },
+        "original_filename": {
+          "maxLength": 255,
+          "title": "Original Filename",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "original_filename",
+        "file",
+        "sha256",
+        "size_bytes",
+        "duration_ms"
+      ],
+      "title": "Sound",
+      "type": "object"
+    },
+    "SoundLicense": {
+      "description": "What the person says the pack's licence is. AgenEditor does not verify it.",
+      "enum": [
+        "cc0",
+        "royalty_free",
+        "cc_by",
+        "other"
+      ],
+      "title": "SoundLicense",
+      "type": "string"
+    },
+    "SoundPack": {
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "default": true,
+          "title": "Active",
+          "type": "boolean"
+        },
+        "credit": {
+          "default": "",
+          "maxLength": 300,
+          "title": "Credit",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "installed_at": {
+          "format": "date-time",
+          "title": "Installed At",
+          "type": "string"
+        },
+        "license": {
+          "$ref": "#/$defs/SoundLicense"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "sounds": {
+          "items": {
+            "$ref": "#/$defs/Sound"
+          },
+          "maxItems": 500,
+          "title": "Sounds",
+          "type": "array"
+        },
+        "source": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "license"
+      ],
+      "title": "SoundPack",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/sound_library.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "packs": {
+      "items": {
+        "$ref": "#/$defs/SoundPack"
+      },
+      "maxItems": 200,
+      "title": "Packs",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "title": "SoundLibrary",
+  "type": "object"
+}

@@ -1,0 +1,28 @@
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+.DS_Store
+*.log
+.env*
+
+# Python engine
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.uv-cache/
+.tools/
+.phase1-workspace/
+.local-projects/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/binaries/*.exe
+apps/desktop/src-tauri/resources/third-party/
+# generated fixture media (rebuild with `uv run ageneditor fixtures`)
+tests/fixtures/media/
+
+# leftover pytest scratch folders (some are not readable by the current user)
+.pytest_*/
+tests/_pytest_*/

@@ -1,0 +1,134 @@
+{
+  "$defs": {
+    "EncoderPreset": {
+      "enum": [
+        "fast",
+        "balanced",
+        "quality"
+      ],
+      "title": "EncoderPreset",
+      "type": "string"
+    },
+    "FrameRate": {
+      "description": "Exact rational frame rate, e.g. 30/1 or 30000/1001.",
+      "properties": {
+        "den": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Den",
+          "type": "integer"
+        },
+        "num": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Num",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "num"
+      ],
+      "title": "FrameRate",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/render_profile.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "audio_channels": {
+      "default": 2,
+      "enum": [
+        1,
+        2
+      ],
+      "title": "Audio Channels",
+      "type": "integer"
+    },
+    "audio_codec": {
+      "const": "aac",
+      "default": "aac",
+      "title": "Audio Codec",
+      "type": "string"
+    },
+    "audio_sample_rate": {
+      "default": 48000,
+      "enum": [
+        44100,
+        48000
+      ],
+      "title": "Audio Sample Rate",
+      "type": "integer"
+    },
+    "container": {
+      "const": "mp4",
+      "default": "mp4",
+      "title": "Container",
+      "type": "string"
+    },
+    "frame_rate": {
+      "$ref": "#/$defs/FrameRate"
+    },
+    "height": {
+      "maximum": 7680,
+      "minimum": 16,
+      "title": "Height",
+      "type": "integer"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "loudness_lufs": {
+      "default": -16.0,
+      "maximum": -5,
+      "minimum": -40,
+      "title": "Loudness Lufs",
+      "type": "number"
+    },
+    "pixel_format": {
+      "const": "yuv420p",
+      "default": "yuv420p",
+      "title": "Pixel Format",
+      "type": "string"
+    },
+    "preset": {
+      "$ref": "#/$defs/EncoderPreset",
+      "default": "balanced"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "true_peak_dbtp": {
+      "default": -1.0,
+      "maximum": 0,
+      "minimum": -10,
+      "title": "True Peak Dbtp",
+      "type": "number"
+    },
+    "video_codec": {
+      "const": "h264",
+      "default": "h264",
+      "title": "Video Codec",
+      "type": "string"
+    },
+    "width": {
+      "maximum": 7680,
+      "minimum": 16,
+      "title": "Width",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "width",
+    "height",
+    "frame_rate"
+  ],
+  "title": "RenderProfile",
+  "type": "object"
+}

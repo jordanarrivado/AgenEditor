@@ -1,0 +1,72 @@
+{
+  "$defs": {
+    "ErrorCode": {
+      "description": "Structured error codes returned by engine services and MCP tools (spec \u00a76).",
+      "enum": [
+        "ASSET_NOT_FOUND",
+        "RANGE_OUT_OF_BOUNDS",
+        "REVISION_CONFLICT",
+        "SOURCE_CHANGED",
+        "UNSUPPORTED_CODEC",
+        "RENDER_FAILED",
+        "QA_FAILED",
+        "PERMISSION_DENIED",
+        "INVALID_TIMELINE",
+        "PROBE_FAILED",
+        "PROJECT_NOT_FOUND",
+        "JOB_NOT_FOUND",
+        "JOB_CANCELED",
+        "INVALID_ARGUMENT",
+        "TRANSCRIPTION_FAILED",
+        "TRANSCRIPT_NOT_FOUND",
+        "SOURCE_INSUFFICIENT",
+        "PLAN_RETRY_LIMIT",
+        "OUT_OF_CONTEXT",
+        "INSUFFICIENT_DISK"
+      ],
+      "title": "ErrorCode",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/engine_error.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/ErrorCode"
+    },
+    "details": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Details",
+      "type": "object"
+    },
+    "message": {
+      "maxLength": 2000,
+      "title": "Message",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "EngineError",
+  "type": "object"
+}

@@ -1,0 +1,412 @@
+{
+  "$defs": {
+    "AssetKind": {
+      "enum": [
+        "video",
+        "audio",
+        "image",
+        "subtitle"
+      ],
+      "title": "AssetKind",
+      "type": "string"
+    },
+    "AssetOrigin": {
+      "enum": [
+        "original",
+        "generated-external",
+        "sound-library"
+      ],
+      "title": "AssetOrigin",
+      "type": "string"
+    },
+    "AssetProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "library": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LibrarySource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "origin": {
+          "$ref": "#/$defs/AssetOrigin",
+          "default": "original"
+        },
+        "tool_name": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Name"
+        }
+      },
+      "title": "AssetProvenance",
+      "type": "object"
+    },
+    "AssetRole": {
+      "description": "What the user registered the asset as. Track rules decide which roles a timeline may use.",
+      "enum": [
+        "primary",
+        "broll",
+        "music",
+        "logo",
+        "subtitles",
+        "reference",
+        "sfx"
+      ],
+      "title": "AssetRole",
+      "type": "string"
+    },
+    "AudioStream": {
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "exclusiveMinimum": 0,
+          "title": "Channels",
+          "type": "integer"
+        },
+        "codec": {
+          "title": "Codec",
+          "type": "string"
+        },
+        "duration_samples": {
+          "minimum": 0,
+          "title": "Duration Samples",
+          "type": "integer"
+        },
+        "index": {
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "sample_rate": {
+          "exclusiveMinimum": 0,
+          "title": "Sample Rate",
+          "type": "integer"
+        },
+        "start_pts": {
+          "default": 0,
+          "title": "Start Pts",
+          "type": "integer"
+        },
+        "time_base_den": {
+          "exclusiveMinimum": 0,
+          "title": "Time Base Den",
+          "type": "integer"
+        },
+        "time_base_num": {
+          "exclusiveMinimum": 0,
+          "title": "Time Base Num",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "index",
+        "codec",
+        "sample_rate",
+        "channels",
+        "time_base_num",
+        "time_base_den",
+        "duration_samples"
+      ],
+      "title": "AudioStream",
+      "type": "object"
+    },
+    "FrameRate": {
+      "description": "Exact rational frame rate, e.g. 30/1 or 30000/1001.",
+      "properties": {
+        "den": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Den",
+          "type": "integer"
+        },
+        "num": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Num",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "num"
+      ],
+      "title": "FrameRate",
+      "type": "object"
+    },
+    "LibrarySource": {
+      "additionalProperties": false,
+      "description": "Where a project asset came from when it was added from the sound library.",
+      "properties": {
+        "credit": {
+          "default": "",
+          "maxLength": 300,
+          "title": "Credit",
+          "type": "string"
+        },
+        "license": {
+          "$ref": "#/$defs/SoundLicense"
+        },
+        "pack_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Pack Id",
+          "type": "string"
+        },
+        "pack_name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Pack Name",
+          "type": "string"
+        },
+        "sound_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Sound Id",
+          "type": "string"
+        },
+        "source": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pack_id",
+        "pack_name",
+        "sound_id",
+        "license"
+      ],
+      "title": "LibrarySource",
+      "type": "object"
+    },
+    "SoundLicense": {
+      "description": "What the person says the pack's licence is. AgenEditor does not verify it.",
+      "enum": [
+        "cc0",
+        "royalty_free",
+        "cc_by",
+        "other"
+      ],
+      "title": "SoundLicense",
+      "type": "string"
+    },
+    "VideoStream": {
+      "additionalProperties": false,
+      "properties": {
+        "avg_frame_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FrameRate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "codec": {
+          "title": "Codec",
+          "type": "string"
+        },
+        "duration_frames": {
+          "minimum": 0,
+          "title": "Duration Frames",
+          "type": "integer"
+        },
+        "frame_rate": {
+          "$ref": "#/$defs/FrameRate"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "title": "Height",
+          "type": "integer"
+        },
+        "index": {
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "is_vfr": {
+          "default": false,
+          "title": "Is Vfr",
+          "type": "boolean"
+        },
+        "pixel_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pixel Format"
+        },
+        "rotation_degrees": {
+          "default": 0,
+          "title": "Rotation Degrees",
+          "type": "integer"
+        },
+        "start_pts": {
+          "default": 0,
+          "title": "Start Pts",
+          "type": "integer"
+        },
+        "time_base_den": {
+          "exclusiveMinimum": 0,
+          "title": "Time Base Den",
+          "type": "integer"
+        },
+        "time_base_num": {
+          "exclusiveMinimum": 0,
+          "title": "Time Base Num",
+          "type": "integer"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "index",
+        "codec",
+        "width",
+        "height",
+        "frame_rate",
+        "time_base_num",
+        "time_base_den",
+        "duration_frames"
+      ],
+      "title": "VideoStream",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/asset.v2.json",
+  "additionalProperties": false,
+  "properties": {
+    "audio": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AudioStream"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "container": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Container"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "imported_at": {
+      "format": "date-time",
+      "title": "Imported At",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/AssetKind"
+    },
+    "labels": {
+      "items": {
+        "maxLength": 60,
+        "minLength": 1,
+        "pattern": "^[\\w][\\w \\-']*$",
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Labels",
+      "type": "array"
+    },
+    "original_filename": {
+      "maxLength": 255,
+      "title": "Original Filename",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/AssetProvenance"
+    },
+    "relative_path": {
+      "title": "Relative Path",
+      "type": "string"
+    },
+    "role": {
+      "$ref": "#/$defs/AssetRole"
+    },
+    "schema_version": {
+      "default": 2,
+      "enum": [
+        1,
+        2
+      ],
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Sha256",
+      "type": "string"
+    },
+    "size_bytes": {
+      "minimum": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    },
+    "video": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VideoStream"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "id",
+    "project_id",
+    "kind",
+    "role",
+    "relative_path",
+    "original_filename",
+    "sha256",
+    "size_bytes"
+  ],
+  "title": "Asset",
+  "type": "object"
+}

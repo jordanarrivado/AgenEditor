@@ -1,0 +1,10 @@
+{
+  "publication_enabled": false,
+  "reason": "User requested that the public release remain blocked on 2026-11-11. Project licence Apache-2.0 chosen by the owner on 2026-11-11.",
+  "project_license_approved": true,
+  "redistribution_review_complete": false,
+  "clean_windows_ui_test_passed": false,
+  "consented_benchmark_review_complete": false,
+  "low_mid_high_hardware_tested": false,
+  "unaided_tutorial_test_passed": false
+}

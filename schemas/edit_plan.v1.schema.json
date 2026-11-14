@@ -1,0 +1,106 @@
+{
+  "$defs": {
+    "PlanSegment": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "first_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "First Word Id",
+          "type": "string"
+        },
+        "last_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Last Word Id",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 1000,
+          "minLength": 10,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        },
+        "source_in_frames": {
+          "minimum": 0,
+          "title": "Source In Frames",
+          "type": "integer"
+        },
+        "source_out_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Source Out Frames",
+          "type": "integer"
+        },
+        "transcript_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Transcript Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "transcript_id",
+        "first_word_id",
+        "last_word_id",
+        "source_in_frames",
+        "source_out_frames",
+        "rationale",
+        "score"
+      ],
+      "title": "PlanSegment",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/edit_plan.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "brief": {
+      "maxLength": 2000,
+      "minLength": 10,
+      "title": "Brief",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "segments": {
+      "items": {
+        "$ref": "#/$defs/PlanSegment"
+      },
+      "maxItems": 5,
+      "minItems": 2,
+      "title": "Segments",
+      "type": "array"
+    },
+    "target_duration_frames": {
+      "exclusiveMinimum": 0,
+      "title": "Target Duration Frames",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "project_id",
+    "target_duration_frames",
+    "brief",
+    "segments"
+  ],
+  "title": "EditPlan",
+  "type": "object"
+}

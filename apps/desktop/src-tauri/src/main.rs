@@ -244,6 +244,7 @@ fn engine_desktop_blocking(
         "asset_path",
         "render_path",
         "list_sound_packs",
+        "list_sound_catalog",
         "set_active_sound_pack",
         "remove_sound_pack",
         "list_transition_styles",
@@ -293,6 +294,28 @@ fn install_sound_pack_blocking(
         Duration::from_secs(15 * 60),
     )?;
     Ok(result.get("result").cloned())
+}
+
+/// Installs a pack from AgenEditor's fixed CC0 catalog. The engine resolves the ID to a pinned
+/// HTTPS URL and SHA-256 (or the copy bundled with the app); the page never supplies a URL.
+fn download_sound_pack_blocking(workspace: PathBuf, catalog_id: String) -> Result<Value, String> {
+    let valid = (2..=64).contains(&catalog_id.len())
+        && catalog_id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    if !valid {
+        return Err("Unknown sound pack".into());
+    }
+    let result = request_with_timeout(
+        &workspace,
+        "/desktop",
+        json!({"operation": "download_sound_pack", "args": {"catalog_id": catalog_id}}),
+        Duration::from_secs(15 * 60),
+    )?;
+    result
+        .get("result")
+        .cloned()
+        .ok_or_else(|| "Engine did not return the installed pack".to_string())
 }
 
 fn import_media_blocking(
@@ -685,12 +708,23 @@ async fn install_sound_pack(
 }
 
 #[tauri::command]
+async fn download_sound_pack(
+    state: State<'_, EngineState>,
+    catalog_id: String,
+) -> Result<Value, String> {
+    let workspace = state.workspace.clone();
+    blocking(move || download_sound_pack_blocking(workspace, catalog_id)).await
+}
+
+#[tauri::command]
 async fn run_agent(
     app: tauri::AppHandle,
     state: State<'_, EngineState>,
     project_id: String,
     prompt: String,
+    stage: String,
 ) -> Result<Value, String> {
+    let stage = agent::Stage::parse(&stage).ok_or("Unknown stage; pick Plan, Execute or Review")?;
     let run = {
         let mut runs = state
             .runs
@@ -706,6 +740,7 @@ async fn run_agent(
         run,
         project_id,
         prompt,
+        stage,
     };
     blocking(move || agent::run_agent_blocking(app, request)).await
 }
@@ -799,6 +834,7 @@ fn main() {
             import_files,
             import_dropped_files,
             install_sound_pack,
+            download_sound_pack,
             run_agent,
             stop_agent,
             new_agent_conversation,

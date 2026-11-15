@@ -30,7 +30,7 @@
     "active": true,
     "targets": ["nsis"],
     "externalBin": ["binaries/ageneditor-engine"],
-    "resources": ["binaries/ffmpeg.exe", "binaries/ffprobe.exe", "resources/third-party/", "resources/fonts/"],
+    "resources": ["binaries/ffmpeg.exe", "binaries/ffprobe.exe", "resources/third-party/", "resources/fonts/", "resources/sounds/"],
     "windows": { "nsis": { "installMode": "currentUser" } }
   }
 }

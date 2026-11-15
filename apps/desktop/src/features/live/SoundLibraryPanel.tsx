@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FolderInput, Loader2, Music2 } from 'lucide-react';
+import { Check, Download, FolderInput, Loader2, Music2 } from 'lucide-react';
 import {
   liveEngineRepository as engine,
+  type SoundCatalogEntry,
   type SoundLicense,
   type SoundPackDetails,
+  type SoundPackInstallResult,
   type SoundPackSummary,
 } from '../../services/liveEngineRepository';
 
@@ -19,21 +21,44 @@ export const LICENSE_LABELS: Record<SoundLicense, string> = {
 };
 const SHORT_LICENSE: Record<SoundLicense, string> = { cc0: 'CC0', royalty_free: 'Royalty-free', cc_by: 'CC BY', other: 'Other licence' };
 
-const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
+/** Engine errors reach the page as JSON text (`{"code":…,"message":…}`); show just the message. */
+const errorText = (error: unknown) => {
+  const text = error instanceof Error ? error.message : String(error);
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && typeof (parsed as { message?: unknown }).message === 'string') {
+      return (parsed as { message: string }).message;
+    }
+  } catch { /* plain text */ }
+  return text;
+};
+const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+const installedNotice = (result: SoundPackInstallResult) => [
+  `Installed "${result.pack.name}" with ${result.pack.sound_count} sound${result.pack.sound_count === 1 ? '' : 's'}. It is active.`,
+  ...result.skipped.map((item) => `Skipped ${item.file}: ${item.reason}`),
+].join('\n');
 const EMPTY: SoundPackDetails = { name: '', license: 'cc0', credit: '', source: '' };
 
 /**
- * Sound-effect packs the person installs from a folder they already downloaded. AgenEditor
- * copies the files; it never downloads sounds. Claude can only use packs ticked Active.
+ * Sound-effect packs. A free CC0 starter pack comes with the app; more CC0 packs from a fixed
+ * catalog install with one click (the engine downloads from a pinned URL and checks a pinned
+ * SHA-256), and the person can install their own pack from a folder. Claude can only use packs
+ * ticked Active and can never download anything itself.
  */
 export const SoundLibraryPanel: React.FC<{ disabled?: boolean; onNotice: (text: string) => void }> = ({ disabled, onNotice }) => {
   const [packs, setPacks] = useState<SoundPackSummary[] | null>(null);
+  const [catalog, setCatalog] = useState<SoundCatalogEntry[]>([]);
   const [form, setForm] = useState<SoundPackDetails | null>(null);
   const [installing, setInstalling] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => setPacks(await engine.listSoundPacks()), []);
+  const refresh = useCallback(async () => {
+    // Listing packs installs the bundled starter pack on first use, so read the catalog after it.
+    setPacks(await engine.listSoundPacks());
+    setCatalog(await engine.listSoundCatalog());
+  }, []);
   useEffect(() => { void refresh().catch((error) => onNotice(`Sound library unavailable: ${errorText(error)}`)); }, [refresh, onNotice]);
 
   const formProblem = !form ? null
@@ -49,11 +74,18 @@ export const SoundLibraryPanel: React.FC<{ disabled?: boolean; onNotice: (text: 
         if (!result) return; // picker cancelled
         await refresh();
         setForm(null);
-        const skipped = result.skipped.map((item) => `Skipped ${item.file}: ${item.reason}`);
-        onNotice([`Installed "${result.pack.name}" with ${result.pack.sound_count} sound${result.pack.sound_count === 1 ? '' : 's'}. It is active.`, ...skipped].join('\n'));
+        onNotice(installedNotice(result));
       })
       .catch((error) => onNotice(`Pack not installed: ${errorText(error)}`))
       .finally(() => setInstalling(false));
+  };
+
+  const download = (entry: SoundCatalogEntry) => {
+    setDownloading(entry.id);
+    void engine.downloadSoundPack(entry.id)
+      .then(async (result) => { await refresh(); onNotice(installedNotice(result)); })
+      .catch((error) => onNotice(`${entry.name} not installed: ${errorText(error)}`))
+      .finally(() => setDownloading(null));
   };
 
   const toggle = (pack: SoundPackSummary) => {
@@ -80,13 +112,13 @@ export const SoundLibraryPanel: React.FC<{ disabled?: boolean; onNotice: (text: 
     <section data-testid="sound-library" className="rounded-xl border border-line bg-surface p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 font-semibold"><Music2 className="w-4 h-4" /> Sound effects <span className="text-xs font-normal text-fg-3">{packs ? `${activeCount} of ${packs.length} active` : ''}</span></h3>
-        {!form && <button className={button} disabled={disabled} onClick={() => setForm(EMPTY)}><FolderInput className="w-4 h-4" /> Install pack…</button>}
+        {!form && <button className={button} disabled={disabled} onClick={() => setForm(EMPTY)}><FolderInput className="w-4 h-4" /> Install from folder…</button>}
       </div>
       <p className="text-xs text-fg-3">Claude only uses sounds from packs ticked <strong className="text-fg-2">Active</strong>, and only when you ask for sound effects.</p>
 
       {form && (
         <div className="space-y-2 rounded-lg border border-line bg-app/50 p-3">
-          <p className="text-xs text-fg-2">Download a free pack yourself and unzip it, then pick its folder. AgenEditor copies the sounds and never downloads anything. Free sources: Kenney.nl (CC0), Pixabay and Mixkit (royalty-free), Freesound (check each sound).</p>
+          <p className="text-xs text-fg-2">Have your own pack? Unzip it, then pick its folder. AgenEditor copies the sounds. Good sources: Pixabay and Mixkit (royalty-free), Freesound (check each sound).</p>
           <label className="block text-xs text-fg-2">Pack name
             <input className={`${field} mt-1`} maxLength={80} placeholder="e.g. Whooshes and pops" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </label>
@@ -101,7 +133,7 @@ export const SoundLibraryPanel: React.FC<{ disabled?: boolean; onNotice: (text: 
             </label>
           )}
           <label className="block text-xs text-fg-2">Where it's from (optional)
-            <input className={`${field} mt-1`} maxLength={500} placeholder="e.g. kenney.nl/assets/ui-audio" value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} />
+            <input className={`${field} mt-1`} maxLength={500} placeholder="e.g. pixabay.com/sound-effects" value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} />
           </label>
           {formProblem && form.name && <p className="text-xs text-warning">{formProblem}</p>}
           <div className="flex gap-2">
@@ -114,7 +146,7 @@ export const SoundLibraryPanel: React.FC<{ disabled?: boolean; onNotice: (text: 
         </div>
       )}
 
-      {packs && packs.length === 0 && !form && <p className="text-sm text-fg-3">No packs installed yet.</p>}
+      {packs && packs.length === 0 && !form && <p className="text-sm text-fg-3">No packs installed yet. Install a free pack below.</p>}
       {packs && packs.length > 0 && (
         <ul className="space-y-1.5" aria-label="Installed sound packs">
           {packs.map((pack) => (
@@ -131,6 +163,32 @@ export const SoundLibraryPanel: React.FC<{ disabled?: boolean; onNotice: (text: 
             </li>
           ))}
         </ul>
+      )}
+
+      {catalog.length > 0 && (
+        <div className="space-y-1.5">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-fg-3">Free packs · CC0 by Kenney</h4>
+          <ul className="space-y-1.5" aria-label="Free sound packs">
+            {catalog.map((entry) => (
+              <li key={entry.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line px-3 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{entry.name}</p>
+                  <p className="text-xs text-fg-3">{entry.description} {entry.sound_count} sounds · {entry.bundled_file ? 'included with AgenEditor' : megabytes(entry.size_bytes)}</p>
+                </div>
+                {entry.installed_pack_id
+                  ? <span className="inline-flex items-center gap-1 text-xs text-fg-3"><Check className="w-4 h-4" /> Installed</span>
+                  : (
+                    <button className={button} disabled={disabled || downloading !== null} onClick={() => download(entry)} aria-label={`${entry.bundled_file ? 'Install' : 'Download and install'} ${entry.name}`}>
+                      {downloading === entry.id
+                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Installing…</>
+                        : <><Download className="w-4 h-4" /> {entry.bundled_file ? 'Install' : 'Download & install'}</>}
+                    </button>
+                  )}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-fg-3">Downloads come from OpenGameArt.org and must match a fixed fingerprint before they install. No credit needed.</p>
+        </div>
       )}
     </section>
   );

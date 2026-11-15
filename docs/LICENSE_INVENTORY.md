@@ -57,5 +57,6 @@ Dev-only: vite, vitest, typescript (Apache-2.0), @testing-library/* (MIT), jsdom
 | Inter, JetBrains Mono | SIL OFL 1.1 | Loaded from Google Fonts in the UI prototype; bundle locally for the desktop app. |
 | Poppins Regular/Bold | SIL OFL 1.1 (`resources/fonts/OFL.txt`) | Bundled caption font; shipped with the installer, rendered into user exports. OFL permits this; the font may not be sold on its own. |
 | Consolas (fixture slates) | Microsoft, OS font | Only rasterised into **generated, gitignored** test media on the developer's machine; never committed or shipped. |
+| Kenney "Interface Sounds" sound pack | CC0 1.0 (`resources/sounds/README.txt`, `License.txt` in the zip) | Bundled starter sound pack, shipped unmodified in the installer and installed into the user's sound library. The other catalog packs (Kenney, CC0) are downloaded by the user from OpenGameArt, not shipped. |
 | UI artwork, thumbnails | Original (CSS/SVG in repo) | No stock imagery. |
 | Fixture media | Generated from FFmpeg `lavfi` sources | Reproducible from `packages/ageneditor/devtools/fixtures.py`; no third-party footage. Consented real-source fixtures stay private and out of the repo. |

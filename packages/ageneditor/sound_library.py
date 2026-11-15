@@ -1,7 +1,9 @@
-"""Workspace-wide sound library. Packs are installed from a local folder the person chose.
+"""Workspace-wide sound library.
 
-Nothing here downloads anything. Installed files are copied, hashed and made read-only; the
-editor may only search and use sounds from packs the person ticked active.
+Packs are installed from a local folder the person chose, or from AgenEditor's CC0 catalog (the
+bundled starter pack, or a download the person asked for; see ``sound_catalog``). Installed files are
+copied, hashed and made read-only; the editor may only search and use sounds from packs the person
+ticked active, and has no way to install or download packs.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ import os
 import re
 import shutil
 import stat
+import sys
 import threading
 import uuid
 from pathlib import Path
@@ -24,9 +27,17 @@ from ageneditor.contracts import (
     EngineException,
     ErrorCode,
 )
-from ageneditor.contracts.sound_library import LibrarySource, Sound, SoundLibrary, SoundLicense, SoundPack
+from ageneditor.contracts.sound_library import (
+    LibrarySource,
+    Sound,
+    SoundCatalogEntry,
+    SoundLibrary,
+    SoundLicense,
+    SoundPack,
+)
 from ageneditor.media.hashing import sha256_file
 from ageneditor.media.probe import probe
+from ageneditor.sound_catalog import CATALOG, catalog_entry, download_archive, extract_audio, verify_archive
 from ageneditor.storage import ProjectStore
 
 #: Folder inside the workspace. It has no project.sqlite3, so project listing ignores it.
@@ -40,6 +51,8 @@ MAX_SKIPPED_REPORTED = 50
 
 _UNSAFE = re.compile(r"[^\w.\- ()\[\]]+")
 _locks: dict[Path, threading.Lock] = {}
+#: Serializes catalog installs (download + install) per library, separately from index writes.
+_catalog_locks: dict[Path, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
 
@@ -48,7 +61,9 @@ def _id(prefix: str) -> str:
 
 
 def _readable(stem: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"[_\-.]+", " ", stem)).strip()[:200] or "sound"
+    """``phaserUp1`` -> ``phaser Up 1``; ``whoosh_fast-01`` -> ``whoosh fast 01``."""
+    spaced = re.sub(r"(?<=[a-z])(?=[A-Z0-9])", " ", stem)
+    return re.sub(r"\s+", " ", re.sub(r"[_\-.]+", " ", spaced)).strip()[:200] or "sound"
 
 
 def _make_writable(function, path, _info) -> None:
@@ -62,6 +77,7 @@ class SoundLibraryStore:
         self.index = self.root / "library.json"
         with _locks_guard:
             self._lock = _locks.setdefault(self.root, threading.Lock())
+            self._catalog_lock = _catalog_locks.setdefault(self.root, threading.Lock())
 
     # ---- persistence -------------------------------------------------------------------------
 
@@ -98,6 +114,7 @@ class SoundLibraryStore:
         license: SoundLicense,
         credit: str = "",
         source_note: str = "",
+        catalog_id: str | None = None,
     ) -> tuple[SoundPack, list[dict[str, str]]]:
         """Copy every usable audio file under ``source`` into a new pack. Symlinks are skipped."""
         source = source.expanduser()
@@ -105,7 +122,14 @@ class SoundLibraryStore:
             raise EngineException(ErrorCode.PERMISSION_DENIED, "install needs a folder you selected")
         # Validate the pack details before copying anything.
         try:
-            draft = SoundPack(id=_id("pack"), name=name, license=license, credit=credit, source=source_note)
+            draft = SoundPack(
+                id=_id("pack"),
+                name=name,
+                license=license,
+                credit=credit,
+                source=source_note,
+                catalog_id=catalog_id,
+            )
         except ValidationError as exc:
             message = exc.errors()[0].get("msg", "invalid pack details").removeprefix("Value error, ")
             raise EngineException(ErrorCode.INVALID_ARGUMENT, message) from exc
@@ -183,6 +207,71 @@ class SoundLibraryStore:
             )
         )
         return None
+
+    # ---- catalog packs (person-only, desktop) -------------------------------------------------
+
+    def catalog(self) -> list[dict[str, object]]:
+        """The CC0 catalog with each entry's installed pack, if any."""
+        installed = {p.catalog_id: p.id for p in self.load().packs if p.catalog_id}
+        return [
+            {**entry.model_dump(mode="json"), "installed_pack_id": installed.get(entry.id)}
+            for entry in CATALOG
+        ]
+
+    def install_catalog_pack(
+        self, catalog_id: str, bundled_dir: Path | None = None
+    ) -> tuple[SoundPack, list[dict[str, str]]]:
+        """Install a catalog pack: from the bundled copy when there is one, otherwise by download."""
+        entry = catalog_entry(catalog_id)
+        with self._catalog_lock:
+            return self._install_catalog_locked(entry, bundled_dir)
+
+    def _install_catalog_locked(
+        self, entry: SoundCatalogEntry, bundled_dir: Path | None
+    ) -> tuple[SoundPack, list[dict[str, str]]]:
+        if any(p.catalog_id == entry.id for p in self.load().packs):
+            raise EngineException(ErrorCode.INVALID_ARGUMENT, f"{entry.name} is already installed")
+        staging = (self.root / f".staging-{uuid.uuid4().hex[:12]}").resolve()
+        staging.mkdir(parents=True)
+        try:
+            bundled = bundled_dir / entry.bundled_file if bundled_dir and entry.bundled_file else None
+            if bundled is not None and bundled.is_file() and not bundled.is_symlink():
+                archive = bundled
+                verify_archive(entry, archive)
+            else:
+                archive = staging / "pack.zip"
+                download_archive(entry, archive)
+            files = staging / "files"
+            if extract_audio(archive, files, AUDIO_EXTENSIONS) == 0:
+                raise EngineException(ErrorCode.ASSET_NOT_FOUND, f"{entry.name} has no audio files")
+            return self.install_pack(
+                files, entry.name, entry.license, source_note=entry.page_url, catalog_id=entry.id
+            )
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+
+    def install_starter(self, bundled_dir: Path) -> SoundPack | None:
+        """Install the bundled starter pack once per workspace. Removing it later keeps it removed."""
+        with self._catalog_lock:
+            if self.load().starter_installed:
+                return None
+            installed: SoundPack | None = None
+            for entry in CATALOG:
+                if not entry.bundled_file:
+                    continue
+                if not (bundled_dir / entry.bundled_file).is_file():
+                    # Not shipped here (e.g. a dev checkout without it): try again next time.
+                    return None
+                if not any(p.catalog_id == entry.id for p in self.load().packs):
+                    try:
+                        installed, _ = self._install_catalog_locked(entry, bundled_dir)
+                    except EngineException as exc:
+                        print(f"starter sound pack not installed: {exc.error.message}", file=sys.stderr)
+                        return None
+            with self._lock:
+                library = self.load()
+                self._save(library.model_copy(update={"starter_installed": True}))
+            return installed
 
     def set_active(self, pack_id: str, active: bool) -> SoundPack:
         with self._lock:

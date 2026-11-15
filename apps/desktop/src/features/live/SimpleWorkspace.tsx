@@ -3,6 +3,7 @@ import { Clapperboard, Download, FileVideo2, Film, Images, Loader2, Plus, Send, 
 import {
   liveEngineRepository as engine,
   type AgentEvent,
+  type AgentStage,
   type EngineAsset,
   type EngineBrief,
   type EngineConnection,
@@ -25,10 +26,22 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : S
 
 /** One line in the Output conversation. */
 export type OutputEntry =
-  | { kind: 'prompt'; text: string }
+  | { kind: 'prompt'; text: string; stage?: AgentStage }
   | { kind: 'text'; text: string }
   | { kind: 'tool'; name: string }
   | { kind: 'status'; text: string; tone: 'ok' | 'warn' | 'error' };
+
+/**
+ * The three Claude stages (spec §3.1). The shell maps each to its model and effort; the labels
+ * here only describe that mapping. After a successful run the picker moves to the next stage.
+ */
+export const STAGES: { id: AgentStage; label: string; model: string; hint: string; fallbackPrompt: string | null }[] = [
+  { id: 'plan', label: 'Plan', model: 'Opus 5.5 · high', hint: "Writes a plan from your files and instructions. Doesn't change the video.", fallbackPrompt: null },
+  { id: 'execute', label: 'Execute', model: 'Sonnet 5.5 · high', hint: 'Makes the edit (following the plan and review notes) and renders a preview.', fallbackPrompt: 'Carry out the plan and any review notes.' },
+  { id: 'review', label: 'Review', model: 'Opus 5.5 · high', hint: "Checks the edit against your instructions and lists fixes. Doesn't change the video.", fallbackPrompt: 'Review the current edit.' },
+];
+const NEXT_STAGE: Record<AgentStage, AgentStage> = { plan: 'execute', execute: 'review', review: 'execute' };
+const stageInfo = (id: AgentStage) => STAGES.find((stage) => stage.id === id) ?? STAGES[0];
 
 const BUCKETS: { id: ImportBucket; title: string; hint: string; icon: React.ReactNode; roles: EngineAsset['role'][] }[] = [
   { id: 'main', title: 'Main footage', hint: 'The video you want edited.', icon: <FileVideo2 className="w-4 h-4" />, roles: ['primary'] },
@@ -69,6 +82,8 @@ export const SimpleWorkspace: React.FC = () => {
   const [prompt, setPrompt] = useState('');
   const [outputs, setOutputs] = useState<Record<string, OutputEntry[]>>({});
   const [running, setRunning] = useState(false);
+  // Chosen stage per project; until the person picks one, a fresh project plans first.
+  const [stages, setStages] = useState<Record<string, AgentStage>>({});
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const shownPreview = useRef<string | null>(null);
   const [qa, setQA] = useState<{ jobId: string; report: EngineQA } | null>(null);
@@ -77,6 +92,9 @@ export const SimpleWorkspace: React.FC = () => {
   const [modelState, setModelState] = useState<'idle' | 'installing'>('idle');
 
   const output = projectId ? outputs[projectId] ?? [] : [];
+  const stage: AgentStage = (projectId && stages[projectId]) || (revision === 0 ? 'plan' : 'execute');
+  const currentStage = stageInfo(stage);
+  const chooseStage = (id: string, next: AgentStage) => setStages((all) => ({ ...all, [id]: next }));
   const append = useCallback((id: string, ...entries: OutputEntry[]) => {
     setOutputs((all) => ({ ...all, [id]: [...(all[id] ?? []), ...entries] }));
   }, []);
@@ -205,19 +223,24 @@ export const SimpleWorkspace: React.FC = () => {
   };
 
   const send = async () => {
-    const text = prompt.trim();
+    const runStage = stage;
+    const text = prompt.trim() || currentStage.fallbackPrompt || '';
     if (!projectId || !text || running) return;
     const id = projectId;
     try { await saveInstructions(); } catch { return; }
     setRunning(true);
     setNotice(null);
     setPrompt('');
-    append(id, { kind: 'prompt', text });
+    append(id, { kind: 'prompt', text, stage: runStage });
     try {
-      const result = await engine.runAgent(id, text);
+      const result = await engine.runAgent(id, text, runStage);
       if (result.stopped) append(id, { kind: 'status', tone: 'warn', text: `Claude ${result.stopped}.` });
       else if (!result.ok) append(id, { kind: 'status', tone: 'error', text: result.text ?? 'Claude reported an error.' });
-      else if (result.text) append(id, { kind: 'status', tone: 'ok', text: 'Done.' });
+      else {
+        const next = NEXT_STAGE[runStage];
+        if (result.text) append(id, { kind: 'status', tone: 'ok', text: `${stageInfo(runStage).label} done. Next: ${stageInfo(next).label}.` });
+        chooseStage(id, next);
+      }
     } catch (error) {
       append(id, { kind: 'status', tone: 'error', text: errorText(error) });
     } finally {
@@ -229,7 +252,10 @@ export const SimpleWorkspace: React.FC = () => {
   const newConversation = () => {
     if (!projectId) return;
     const id = projectId;
-    void engine.newAgentConversation(id).then(() => setOutputs((all) => ({ ...all, [id]: [] })));
+    void engine.newAgentConversation(id).then(() => {
+      setOutputs((all) => ({ ...all, [id]: [] }));
+      setStages(({ [id]: _dropped, ...rest }) => rest);
+    });
   };
 
   const run = (task: () => Promise<void>) => {
@@ -338,13 +364,24 @@ export const SimpleWorkspace: React.FC = () => {
             </section>
 
             <section className={`${panel} space-y-2`}>
+              <div role="radiogroup" aria-label="Claude stage" className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-app p-1">
+                {STAGES.map((item) => (
+                  <button key={item.id} type="button" role="radio" aria-checked={stage === item.id} disabled={running}
+                    onClick={() => projectId && chooseStage(projectId, item.id)}
+                    className={`rounded-md px-2 py-1.5 text-left disabled:opacity-60 ${stage === item.id ? 'bg-accent text-on-accent' : 'text-fg-2 hover:bg-elevated'}`}>
+                    <span className="block text-sm font-semibold">{item.label}</span>
+                    <span className={`block text-xs ${stage === item.id ? 'opacity-90' : 'text-fg-3'}`}>{item.model}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-fg-3">{currentStage.hint}</p>
               <label htmlFor="prompt" className="font-semibold block">Prompt</label>
               <textarea id="prompt" className={field} rows={4} maxLength={20000} placeholder={hasMain ? 'Tell Claude what to make, e.g. "Cut this into a punchy 30 second teaser, start with the strongest line."' : 'Add your main footage first, then tell Claude what to make.'} value={prompt} onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }} />
               <div className="flex flex-wrap items-center gap-2">
                 {running
                   ? <button className={button} onClick={() => void engine.stopAgent()}><Square className="w-4 h-4" /> Stop</button>
-                  : <button className={primary} disabled={!prompt.trim() || claudeMissing} onClick={() => void send()}><Send className="w-4 h-4" /> Send</button>}
+                  : <button className={primary} disabled={(!prompt.trim() && !currentStage.fallbackPrompt) || claudeMissing} onClick={() => void send()}><Send className="w-4 h-4" /> Send to {currentStage.label}</button>}
                 <span className="text-xs text-fg-3">Ctrl+Enter to send</span>
                 <button className="ml-auto text-xs text-fg-3 hover:text-fg disabled:opacity-40" disabled={running || output.length === 0} onClick={newConversation}>New conversation</button>
               </div>
@@ -390,7 +427,12 @@ export const SimpleWorkspace: React.FC = () => {
 const OutputLine: React.FC<{ entry: OutputEntry }> = ({ entry }) => {
   switch (entry.kind) {
     case 'prompt':
-      return <li className="ml-8 rounded-lg bg-accent/15 px-3 py-2 whitespace-pre-wrap">{entry.text}</li>;
+      return (
+        <li className="ml-8 rounded-lg bg-accent/15 px-3 py-2">
+          {entry.stage && <span className="mb-1 block text-xs font-semibold text-fg-2">{stageInfo(entry.stage).label} · {stageInfo(entry.stage).model}</span>}
+          <span className="whitespace-pre-wrap">{entry.text}</span>
+        </li>
+      );
     case 'text':
       return <li className="mr-8 rounded-lg bg-app px-3 py-2"><ClaudeMarkdown text={entry.text} /></li>;
     case 'tool':

@@ -6,7 +6,7 @@ import { SimpleWorkspace } from '../../apps/desktop/src/features/live/SimpleWork
 const engine = vi.hoisted(() => Object.fromEntries([
   'listProjects', 'summary', 'timeline', 'getBrief', 'saveBrief', 'listJobs', 'connection', 'createProject',
   'importFiles', 'importDroppedFiles', 'onMediaDropped', 'onAgentEvent', 'runAgent', 'stopAgent',
-  'newAgentConversation', 'listSoundPacks', 'listTransitionStyles', 'mediaUrl', 'startRender', 'runQA', 'saveExport', 'cacheModel',
+  'newAgentConversation', 'listSoundPacks', 'listSoundCatalog', 'listTransitionStyles', 'mediaUrl', 'startRender', 'runQA', 'saveExport', 'cacheModel',
 ].map((name) => [name, vi.fn()])));
 
 vi.mock('../../apps/desktop/src/services/liveEngineRepository', () => ({ liveEngineRepository: engine }));
@@ -33,6 +33,7 @@ beforeEach(() => {
   engine.saveBrief.mockImplementation(async (_id, next) => ({ ...brief, ...next, version: 2 }));
   engine.listJobs.mockResolvedValue([]);
   engine.listSoundPacks.mockResolvedValue([]);
+  engine.listSoundCatalog.mockResolvedValue([]);
   engine.listTransitionStyles.mockResolvedValue([]);
   engine.connection.mockResolvedValue({ connected: true, command: '', workspace: '', claude_available: true });
   engine.onMediaDropped.mockImplementation(async (handler) => { emitDrop = handler; return () => undefined; });
@@ -84,7 +85,7 @@ describe('simple workspace', () => {
     fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Make a teaser' } });
     fireEvent.click(screen.getByRole('button', { name: /Send/ }));
 
-    await waitFor(() => expect(engine.runAgent).toHaveBeenCalledWith(project.id, 'Make a teaser'));
+    await waitFor(() => expect(engine.runAgent).toHaveBeenCalledWith(project.id, 'Make a teaser', 'plan'));
     expect(engine.saveBrief).toHaveBeenCalledWith(project.id, expect.objectContaining({ brief_text: 'Vertical, under 30s', script_text: 's' }), 1);
     emitAgent(project.id, { kind: 'tool', name: 'commit_timeline' });
     emitAgent(project.id, { kind: 'text', text: 'Cut to 28s around the hook.' });
@@ -98,13 +99,52 @@ describe('simple workspace', () => {
     expect(await screen.findByRole('button', { name: /Send/ })).toBeInTheDocument();
   });
 
+  it('starts a fresh project in Plan and moves to Execute, then Review, after each successful run', async () => {
+    engine.runAgent.mockImplementation(async (_id, _text, stage) => ({ ok: true, stopped: null, text: `${stage} reply`, stage }));
+    render(<SimpleWorkspace />);
+    const plan = await screen.findByRole('radio', { name: /Plan/ });
+    await waitFor(() => expect(plan).toHaveAttribute('aria-checked', 'true'));
+    expect(plan).toHaveTextContent('Opus 5.5 · high');
+    expect(screen.getByRole('radio', { name: /Execute/ })).toHaveTextContent('Sonnet 5.5 · high');
+    // Plan needs a prompt; Execute and Review fall back to a default one.
+    expect(screen.getByRole('button', { name: 'Send to Plan' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'A 30s teaser' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Plan' }));
+    await waitFor(() => expect(engine.runAgent).toHaveBeenLastCalledWith(project.id, 'A 30s teaser', 'plan'));
+    expect(await screen.findByText('Plan done. Next: Execute.')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Execute/ })).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Execute' }));
+    await waitFor(() => expect(engine.runAgent).toHaveBeenLastCalledWith(project.id, 'Carry out the plan and any review notes.', 'execute'));
+    await waitFor(() => expect(screen.getByRole('radio', { name: /Review/ })).toHaveAttribute('aria-checked', 'true'));
+    expect(within(screen.getByTestId('output-log')).getByText('Execute · Sonnet 5.5 · high')).toBeInTheDocument();
+  });
+
+  it('lets the person pick a stage before Claude works', async () => {
+    engine.runAgent.mockResolvedValue({ ok: true, stopped: null, text: 'Notes', stage: 'review' });
+    render(<SimpleWorkspace />);
+    fireEvent.click(await screen.findByRole('radio', { name: /Review/ }));
+    fireEvent.change(screen.getByLabelText('Prompt'), { target: { value: 'Is the hook strong enough?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Review' }));
+    await waitFor(() => expect(engine.runAgent).toHaveBeenCalledWith(project.id, 'Is the hook strong enough?', 'review'));
+  });
+
+  it('keeps the stage when a run fails', async () => {
+    engine.runAgent.mockResolvedValue({ ok: false, stopped: null, text: 'Overloaded' });
+    render(<SimpleWorkspace />);
+    fireEvent.change(await screen.findByLabelText('Prompt'), { target: { value: 'Plan it' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Plan' }));
+    expect(await screen.findByText('Overloaded')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Plan/ })).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('shows a stopped run honestly instead of as done', async () => {
     engine.runAgent.mockResolvedValue({ ok: false, stopped: 'stopped by you', text: null });
     render(<SimpleWorkspace />);
     fireEvent.change(await screen.findByLabelText('Prompt'), { target: { value: 'Go' } });
     fireEvent.click(screen.getByRole('button', { name: /Send/ }));
     expect(await screen.findByText('Claude stopped by you.')).toBeInTheDocument();
-    expect(screen.queryByText('Done.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/done\. Next/)).not.toBeInTheDocument();
   });
 
   it('disables Send when Claude Code is not installed', async () => {

@@ -58,7 +58,7 @@
       "type": "object"
     },
     "SoundLicense": {
-      "description": "What the person says the pack's licence is. AgenEditor does not verify it.",
+      "description": "The pack's licence. For folder installs it is what the person says; AgenEditor does not verify it.",
       "enum": [
         "cc0",
         "royalty_free",
@@ -75,6 +75,19 @@
           "default": true,
           "title": "Active",
           "type": "boolean"
+        },
+        "catalog_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Catalog Id"
         },
         "credit": {
           "default": "",
@@ -141,6 +154,11 @@
       "default": 1,
       "title": "Schema Version",
       "type": "integer"
+    },
+    "starter_installed": {
+      "default": false,
+      "title": "Starter Installed",
+      "type": "boolean"
     }
   },
   "title": "SoundLibrary",

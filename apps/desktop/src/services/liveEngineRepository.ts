@@ -44,10 +44,29 @@ export interface SoundPackSummary {
   license: SoundLicense;
   credit: string;
   source: string;
+  catalog_id: string | null;
   active: boolean;
   installed_at: string;
   sound_count: number;
 }
+
+/** A free CC0 pack from AgenEditor's catalog; bundled with the app or downloaded on request. */
+export interface SoundCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  author: string;
+  license: SoundLicense;
+  page_url: string;
+  download_url: string;
+  sha256: string;
+  size_bytes: number;
+  sound_count: number;
+  bundled_file: string | null;
+  installed_pack_id: string | null;
+}
+
+export interface SoundPackInstallResult { pack: SoundPackSummary; skipped: { file: string; reason: string }[] }
 
 export type TransitionStyleId = 'classic' | 'modern' | 'montage' | 'cinematic';
 /** A built-in transition style (FFmpeg xfade presets) and whether Claude may use it. */
@@ -126,7 +145,16 @@ export type ImportBucket = 'main' | 'reference' | 'asset';
 export type ImportOutcome = { file: string; asset: EngineAsset; error?: undefined } | { file: string; asset?: undefined; error: string };
 
 export type AgentEvent = { kind: 'text'; text: string } | { kind: 'tool'; name: string };
-export interface AgentResult { ok: boolean; stopped: string | null; text: string | null; cost_usd?: number | null }
+/** Which step of Plan -> Execute -> Review a Claude run is; the shell picks the model from it. */
+export type AgentStage = 'plan' | 'execute' | 'review';
+export interface AgentResult {
+  ok: boolean;
+  stopped: string | null;
+  text: string | null;
+  cost_usd?: number | null;
+  stage?: AgentStage;
+  model?: string;
+}
 
 export interface LiveEngineRepository {
   listProjects(): Promise<EngineProject[]>;
@@ -141,13 +169,15 @@ export interface LiveEngineRepository {
   importDroppedFiles(projectId: string, bucket: ImportBucket, toolName?: string): Promise<ImportOutcome[]>;
   listSoundPacks(): Promise<SoundPackSummary[]>;
   /** Opens a folder picker and installs the sounds in it. Null when the picker is cancelled. */
-  installSoundPack(details: SoundPackDetails): Promise<{ pack: SoundPackSummary; skipped: { file: string; reason: string }[] } | null>;
+  installSoundPack(details: SoundPackDetails): Promise<SoundPackInstallResult | null>;
+  listSoundCatalog(): Promise<SoundCatalogEntry[]>;
+  downloadSoundPack(catalogId: string): Promise<SoundPackInstallResult>;
   setSoundPackActive(packId: string, active: boolean): Promise<SoundPackSummary>;
   removeSoundPack(packId: string): Promise<{ removed: string }>;
   listTransitionStyles(): Promise<TransitionStyleSummary[]>;
   setTransitionStyleActive(style: TransitionStyleId, active: boolean): Promise<TransitionStyleSummary[]>;
   /** Runs Claude Code as the editor for one prompt. Follow-up prompts continue the conversation. */
-  runAgent(projectId: string, prompt: string): Promise<AgentResult>;
+  runAgent(projectId: string, prompt: string, stage: AgentStage): Promise<AgentResult>;
   stopAgent(): Promise<boolean>;
   newAgentConversation(projectId: string): Promise<void>;
   onAgentEvent(handler: (projectId: string, event: AgentEvent) => void): Promise<() => void>;
@@ -196,11 +226,13 @@ export const liveEngineRepository: LiveEngineRepository = {
   importDroppedFiles: (projectId, bucket, toolName) => invoke('import_dropped_files', { projectId, bucket, toolName }),
   listSoundPacks: () => desktop('list_sound_packs'),
   installSoundPack: (details) => invoke('install_sound_pack', { details }),
+  listSoundCatalog: () => desktop('list_sound_catalog'),
+  downloadSoundPack: (catalogId) => invoke('download_sound_pack', { catalogId }),
   setSoundPackActive: (packId, active) => desktop('set_active_sound_pack', { pack_id: packId, active }),
   removeSoundPack: (packId) => desktop('remove_sound_pack', { pack_id: packId }),
   listTransitionStyles: () => desktop('list_transition_styles'),
   setTransitionStyleActive: (style, active) => desktop('set_active_transition_style', { style, active }),
-  runAgent: (projectId, prompt) => invoke('run_agent', { projectId, prompt }),
+  runAgent: (projectId, prompt, stage) => invoke('run_agent', { projectId, prompt, stage }),
   stopAgent: () => invoke('stop_agent'),
   newAgentConversation: (projectId) => invoke('new_agent_conversation', { projectId }),
   onAgentEvent: (handler) => listen<{ project_id: string; event: AgentEvent }>('agent-event', (event) => {

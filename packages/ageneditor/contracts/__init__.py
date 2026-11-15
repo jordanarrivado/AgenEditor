@@ -41,7 +41,7 @@ from .revision import (
     TimelineDiff,
     TrimClip,
 )
-from .sound_library import LibrarySource, Sound, SoundLibrary, SoundLicense, SoundPack
+from .sound_library import LibrarySource, Sound, SoundCatalogEntry, SoundLibrary, SoundLicense, SoundPack
 from .timeline import (
     AudioMix,
     Author,
@@ -90,6 +90,7 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "revision_patch": RevisionPatch,
     "revision_result": RevisionResult,
     "sound_library": SoundLibrary,
+    "sound_catalog_entry": SoundCatalogEntry,
     "transition_settings": TransitionSettings,
 }
 
@@ -174,6 +175,7 @@ __all__ = [
     "ShotLabel",
     "SilenceCandidate",
     "Sound",
+    "SoundCatalogEntry",
     "SoundLibrary",
     "SoundLicense",
     "SoundPack",

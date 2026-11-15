@@ -7,7 +7,9 @@ Read before changing code. Specs: [`docs/AGENEDITOR_PRODUCT_SPEC.md`](docs/AGENE
 ## Product rules (non-negotiable)
 
 * **Editing only, inside AgenEditor.** AgenEditor itself never generates video, images, voices or music, and never
-  fetches stock media. Generation happens in external tools the user runs (ChatGPT, Gemini, Google Flow). AgenEditor
+  fetches stock media, with one exception: the CC0 sound-effect packs in its fixed catalog (one bundled, the others
+  downloaded only when the user clicks "Download & install"; pinned HTTPS URL + SHA-256; the agent cannot trigger it;
+  spec §3.2). Generation happens in external tools the user runs (ChatGPT, Gemini, Google Flow). AgenEditor
   only writes generation *prompts* from the plan, imports the user's results, and labels them `AI-generated (external)`.
   See "Asset preparation" in the product spec (§3.1).
 * **Non-destructive.** Originals are never modified. Every timeline change is a new immutable revision.

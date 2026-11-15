@@ -68,11 +68,18 @@ The UI and MCP bridge **must share the same project model, service layer, permis
 
 | Step | Who | What |
 |---|---|---|
-| Plan | Claude Opus 5.5 (medium effort) | Source-cited edit decision list **plus** an `asset_requests` JSON block: one entry per storyboard frame or B-roll shot that the footage lacks (`id`, `kind` image/video, `purpose`, `prompt`, `aspect`). |
+| Plan | Claude Opus 5.5 (high effort) | Source-cited edit decision list **plus** an `asset_requests` JSON block: one entry per storyboard frame or B-roll shot that the footage lacks (`id`, `kind` image/video, `purpose`, `prompt`, `aspect`). |
 | Prepare assets | External tools, run by the user | Image requests go to ChatGPT by default, to Gemini if ChatGPT is out of quota; video requests go to Google Flow (MCP when a connector exists, otherwise copy-paste). AgenEditor shows a one-click checklist with "Copy for ChatGPT / Gemini / Flow" per request and a "Generate storyboard" entry. |
 | Gate | AgenEditor | Execute stays locked until every request is imported and marked ready (or explicitly dropped). |
-| Execute | Claude Sonnet 5.5 | Carries out the EDL through MCP tools, using only registered assets. |
-| Review | Claude Opus 5.5 (medium effort) | Checks the cut and measured QA against the brief; sends notes back to Execute. |
+| Execute | Claude Sonnet 5.5 (high effort) | Carries out the EDL through MCP tools, using only registered assets. |
+| Review | Claude Opus 5.5 (high effort) | Checks the cut and measured QA against the brief; sends notes back to Execute. |
+
+In the desktop app (amended 2026-11-15) the user picks **Plan**, **Execute** or **Review** above the prompt before
+each Claude run; the shell passes that stage's model and effort to Claude Code (`--model`, `--effort high`). A new
+project starts on Plan, and after each successful run the picker moves on (Plan → Execute → Review → Execute); the
+user can change it at any time. All stages share one conversation, so Execute sees the plan and the review notes.
+Plan and Review cannot change the edit: the shell disables the engine's editing tools for them (Plan also cannot
+render; Review may render a preview and run QA). With an empty prompt, Execute and Review use a default request.
 
 Rules: AgenEditor makes no generation API calls and holds no generation credentials. Imported generated files are
 registered like any asset (hash, probe, source-linked IDs) and carry provenance `generated-external` with the tool
@@ -81,10 +88,20 @@ contain the brief and shot description only — no transcript beyond what the us
 
 ### 3.2 Sound library (added 2026-11-15)
 
-The user installs sound-effect packs from a local folder they already downloaded (for example Kenney CC0, Pixabay
-or Mixkit sets). AgenEditor copies, probes, hashes and write-protects each audio-only file (60 s or shorter, up
+Packs come from two places (amended 2026-11-15):
+
+* **Free catalog (CC0).** A fixed list of Kenney packs published on OpenGameArt under CC0. *Interface Sounds* ships
+  inside the installer and is installed (active) the first time the sound library opens; removing it keeps it
+  removed. The other packs install only when the user clicks **Download & install**. The engine downloads from the
+  entry's fixed HTTPS URL (host allow-list `opengameart.org`, redirects included), caps the size, and installs only
+  if the bytes match the pinned SHA-256; otherwise nothing is installed. The editor agent has no tool that installs
+  or downloads packs. This is the only stock media AgenEditor fetches.
+* **Own folder.** The user installs a pack from a local folder they already downloaded (for example Pixabay or
+  Mixkit sets).
+
+AgenEditor copies, probes, hashes and write-protects each audio-only file (60 s or shorter, up
 to 500 per pack) into `<workspace>/_sound_library/`, and records the licence the user states (CC0, royalty-free,
-CC BY with a required credit line, or other). AgenEditor does not verify the licence and never downloads sounds.
+CC BY with a required credit line, or other). For folder installs AgenEditor does not verify the licence.
 
 Each pack has an **Active** tick box. The editor agent can search only active packs (`list_sound_effects`) and
 add a sound with `add_sound_effect`, which registers it in the project as role `sfx` with provenance

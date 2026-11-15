@@ -1,0 +1,101 @@
+{
+  "$defs": {
+    "SoundLicense": {
+      "description": "The pack's licence. For folder installs it is what the person says; AgenEditor does not verify it.",
+      "enum": [
+        "cc0",
+        "royalty_free",
+        "cc_by",
+        "other"
+      ],
+      "title": "SoundLicense",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/sound_catalog_entry.v1.json",
+  "additionalProperties": false,
+  "description": "A CC0 pack AgenEditor can install for the person: bundled with the app or downloaded on request.",
+  "properties": {
+    "author": {
+      "maxLength": 80,
+      "title": "Author",
+      "type": "string"
+    },
+    "bundled_file": {
+      "anyOf": [
+        {
+          "maxLength": 120,
+          "pattern": "^[\\w.\\-]+\\.zip$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Bundled File"
+    },
+    "description": {
+      "maxLength": 300,
+      "title": "Description",
+      "type": "string"
+    },
+    "download_url": {
+      "maxLength": 300,
+      "pattern": "^https://",
+      "title": "Download Url",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9-]{1,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "license": {
+      "$ref": "#/$defs/SoundLicense"
+    },
+    "name": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "page_url": {
+      "maxLength": 300,
+      "pattern": "^https://",
+      "title": "Page Url",
+      "type": "string"
+    },
+    "sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Sha256",
+      "type": "string"
+    },
+    "size_bytes": {
+      "exclusiveMinimum": 0,
+      "maximum": 104857600,
+      "title": "Size Bytes",
+      "type": "integer"
+    },
+    "sound_count": {
+      "exclusiveMinimum": 0,
+      "maximum": 500,
+      "title": "Sound Count",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "description",
+    "author",
+    "license",
+    "page_url",
+    "download_url",
+    "sha256",
+    "size_bytes",
+    "sound_count"
+  ],
+  "title": "SoundCatalogEntry",
+  "type": "object"
+}

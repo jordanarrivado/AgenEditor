@@ -276,7 +276,8 @@
         "SOURCE_INSUFFICIENT",
         "PLAN_RETRY_LIMIT",
         "OUT_OF_CONTEXT",
-        "INSUFFICIENT_DISK"
+        "INSUFFICIENT_DISK",
+        "DOWNLOAD_FAILED"
       ],
       "title": "ErrorCode",
       "type": "string"

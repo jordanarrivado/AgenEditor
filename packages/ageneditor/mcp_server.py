@@ -470,8 +470,9 @@ def build_server(workspace: Path, shared_service: bool = False) -> MCPServer:
     def list_sound_effects(query: str = "", limit: int = 30) -> dict[str, Any]:
         """Search sound effects in the packs the user marked active (e.g. query "whoosh").
 
-        Only active packs are searchable. If active_packs is 0, tell the user to install a pack
-        and tick it active in the Sound effects panel; never invent or fetch sounds.
+        Only active packs are searchable. If active_packs is 0 or nothing fits, tell the user to
+        tick a pack active or click "Download & install" on a free pack in the Sound effects panel.
+        You cannot download or install sounds; never invent or fetch them.
         """
         try:
             return library.search(query, limit)

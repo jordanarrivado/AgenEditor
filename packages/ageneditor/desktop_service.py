@@ -205,7 +205,7 @@ class DesktopService:
             store = ProjectStore.create(self.workspace, name)
             store.create_timeline(profile, target)
             return {"project_id": store.project_id, "name": name, "current_revision": 0}
-        if operation.endswith("sound_pack") or operation == "list_sound_packs":
+        if operation.endswith("sound_pack") or operation in {"list_sound_packs", "list_sound_catalog"}:
             return self._sound_library_call(operation, args)
         if operation in {"list_transition_styles", "set_active_transition_style"}:
             from ageneditor.contracts.transition import TransitionStyle
@@ -324,14 +324,21 @@ class DesktopService:
 
     def _sound_library_call(self, operation: str, args: dict[str, Any]) -> Any:
         from ageneditor.contracts.sound_library import SoundLicense
+        from ageneditor.sound_catalog import bundled_sounds_dir
         from ageneditor.sound_library import SoundLibraryStore
+
+        def summary(pack: Any) -> dict[str, Any]:
+            return {**pack.model_dump(mode="json", exclude={"sounds"}), "sound_count": len(pack.sounds)}
 
         library = SoundLibraryStore(self.workspace)
         if operation == "list_sound_packs":
-            return [
-                {**pack.model_dump(mode="json", exclude={"sounds"}), "sound_count": len(pack.sounds)}
-                for pack in library.load().packs
-            ]
+            library.install_starter(bundled_sounds_dir())
+            return [summary(pack) for pack in library.load().packs]
+        if operation == "list_sound_catalog":
+            return library.catalog()
+        if operation == "download_sound_pack":
+            pack, skipped = library.install_catalog_pack(str(args["catalog_id"]), bundled_sounds_dir())
+            return {"pack": summary(pack), "skipped": skipped}
         if operation == "install_sound_pack":
             path = Path(str(args["source_path"]))
             if not path.is_absolute():
@@ -343,11 +350,9 @@ class DesktopService:
                 str(args.get("credit") or ""),
                 str(args.get("source") or ""),
             )
-            summary = {**pack.model_dump(mode="json", exclude={"sounds"}), "sound_count": len(pack.sounds)}
-            return {"pack": summary, "skipped": skipped}
+            return {"pack": summary(pack), "skipped": skipped}
         if operation == "set_active_sound_pack":
-            pack = library.set_active(str(args["pack_id"]), bool(args["active"]))
-            return {**pack.model_dump(mode="json", exclude={"sounds"}), "sound_count": len(pack.sounds)}
+            return summary(library.set_active(str(args["pack_id"]), bool(args["active"])))
         if operation == "remove_sound_pack":
             library.remove_pack(str(args["pack_id"]))
             return {"removed": str(args["pack_id"])}

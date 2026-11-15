@@ -1,7 +1,9 @@
-"""Sound library: sound-effect packs the user installs from files they already have.
+"""Sound library: sound-effect packs the user installs.
 
-AgenEditor never downloads sounds. A person installs a pack from a local folder, records its
-licence, and ticks it active; the editor may only use sounds from active packs.
+A pack comes from a local folder the person picked, or from AgenEditor's fixed catalog of CC0 packs:
+one starter pack ships inside the installer, and the person can download the others with one click.
+Catalog downloads use fixed HTTPS URLs and are checked against a pinned SHA-256. The editor agent
+never downloads anything; it may only use sounds from packs the person ticked active.
 """
 
 from __future__ import annotations
@@ -17,10 +19,11 @@ from .common import ContractModel, Identifier, Sha256Hex, utcnow
 PackName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 CreditLine = Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)]
 SourceNote = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
+CatalogId = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9-]{1,63}$")]
 
 
 class SoundLicense(StrEnum):
-    """What the person says the pack's licence is. AgenEditor does not verify it."""
+    """The pack's licence. For folder installs it is what the person says; AgenEditor does not verify it."""
 
     CC0 = "cc0"  # public domain, no credit
     ROYALTY_FREE = "royalty_free"  # site licence allowing use without credit (e.g. Pixabay, Mixkit)
@@ -48,8 +51,10 @@ class SoundPack(ContractModel):
     license: SoundLicense
     #: Credit text to publish with the video (required for CC BY).
     credit: CreditLine = ""
-    #: Where the person got the pack (URL or note). Display only; never fetched.
+    #: Where the pack came from (URL or note). Display only; never fetched.
     source: SourceNote = ""
+    #: Set when the pack was installed from AgenEditor's catalog.
+    catalog_id: CatalogId | None = None
     active: bool = True
     installed_at: datetime = Field(default_factory=utcnow)
     sounds: list[Sound] = Field(default_factory=list, max_length=500)
@@ -63,7 +68,28 @@ class SoundPack(ContractModel):
 
 class SoundLibrary(ContractModel):
     schema_version: Literal[1] = 1
+    #: True once the bundled starter pack was installed, so removing it does not bring it back.
+    starter_installed: bool = False
     packs: list[SoundPack] = Field(default_factory=list, max_length=200)
+
+
+class SoundCatalogEntry(ContractModel):
+    """A CC0 pack AgenEditor can install for the person: bundled with the app or downloaded on request."""
+
+    id: CatalogId
+    name: PackName
+    description: str = Field(max_length=300)
+    author: str = Field(max_length=80)
+    license: SoundLicense
+    #: The page that states the licence (shown to the person).
+    page_url: str = Field(max_length=300, pattern=r"^https://")
+    #: Fixed HTTPS download; the bytes must match ``sha256`` and ``size_bytes``.
+    download_url: str = Field(max_length=300, pattern=r"^https://")
+    sha256: Sha256Hex
+    size_bytes: int = Field(gt=0, le=100 * 1024 * 1024)
+    sound_count: int = Field(gt=0, le=500)
+    #: File name of the copy shipped in the installer's ``resources/sounds`` (starter pack), if any.
+    bundled_file: str | None = Field(default=None, max_length=120, pattern=r"^[\w.\-]+\.zip$")
 
 
 class LibrarySource(ContractModel):

@@ -5,10 +5,16 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import urllib.error
+import urllib.request
+import zipfile
+from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
+from ageneditor import sound_catalog, sound_library
 from ageneditor.contracts import (
     AssetOrigin,
     AssetRole,
@@ -17,6 +23,7 @@ from ageneditor.contracts import (
     EngineException,
     ErrorCode,
     RenderProfile,
+    SoundCatalogEntry,
     SoundLicense,
     TrackId,
 )
@@ -229,3 +236,217 @@ def test_sfx_role_rules(tmp_path: Path, media_dir: Path) -> None:
     ]  # fmt: skip
     issues = store.validation_issues(seed.model_copy(update={"clips": clips}))
     assert any("music asset cannot be placed on A3" in issue.message for issue in issues)
+
+
+# ---- catalog packs: bundled starter and one-click downloads ------------------------------------
+
+
+def _zip(path: Path, members: dict[str, Path | bytes]) -> Path:
+    with zipfile.ZipFile(path, "w") as bundle:
+        for name, content in members.items():
+            if isinstance(content, Path):
+                bundle.write(content, name)
+            else:
+                bundle.writestr(name, content)
+    return path
+
+
+def _entry(archive: Path, catalog_id: str = "test-pack", bundled: bool = False) -> SoundCatalogEntry:
+    return SoundCatalogEntry(
+        id=catalog_id,
+        name="Test Pack",
+        description="Beeps.",
+        author="Tester",
+        license=SoundLicense.CC0,
+        page_url="https://opengameart.org/content/test-pack",
+        download_url=f"https://opengameart.org/sites/default/files/{archive.name}",
+        sha256=sha256_file(archive),
+        size_bytes=archive.stat().st_size,
+        sound_count=2,
+        bundled_file=archive.name if bundled else None,
+    )
+
+
+@pytest.fixture
+def pack_zip(tmp_path: Path) -> Path:
+    tones = tmp_path / "tones"
+    (tmp_path / "bundled").mkdir()
+    return _zip(
+        tmp_path / "bundled" / "test_pack.zip",
+        {
+            "Audio/clickSoft1.wav": _tone(tones / "a.wav", 0.2, 900),
+            "Audio/Whooshes/whoosh_002.wav": _tone(tones / "b.wav", 0.4, 600),
+            "Audio/Preview.wav": _tone(tones / "c.wav", 0.3, 300),
+            "Audio/License.txt": b"CC0",
+            "../escape.wav": _tone(tones / "d.wav", 0.2, 400),
+        },
+    )
+
+
+@pytest.fixture
+def catalog(monkeypatch: pytest.MonkeyPatch, pack_zip: Path) -> tuple[SoundCatalogEntry, ...]:
+    entries = (_entry(pack_zip, bundled=True),)
+    monkeypatch.setattr(sound_catalog, "CATALOG", entries)
+    monkeypatch.setattr(sound_library, "CATALOG", entries)
+    return entries
+
+
+def test_readable_names_split_camel_case() -> None:
+    assert sound_library._readable("phaserUp1") == "phaser Up 1"
+    assert sound_library._readable("whoosh_fast-01") == "whoosh fast 01"
+
+
+def test_extract_audio_skips_unsafe_and_non_audio_members(tmp_path: Path, pack_zip: Path) -> None:
+    out = tmp_path / "out"
+    assert sound_catalog.extract_audio(pack_zip, out, sound_library.AUDIO_EXTENSIONS) == 2
+    files = sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file())
+    # The shared "Audio/" folder is dropped; preview, licence and the ../ entry are skipped.
+    assert files == ["Whooshes/whoosh_002.wav", "clickSoft1.wav"]
+    assert not (tmp_path / "escape.wav").exists()
+
+
+@pytest.mark.usefixtures("catalog")
+def test_bundled_catalog_pack_installs_with_provenance(tmp_path: Path, pack_zip: Path) -> None:
+    library = SoundLibraryStore(tmp_path / "ws")
+    pack, skipped = library.install_catalog_pack("test-pack", pack_zip.parent)
+    assert skipped == []
+    assert (pack.catalog_id, pack.license, pack.source, pack.active) == (
+        "test-pack",
+        SoundLicense.CC0,
+        "https://opengameart.org/content/test-pack",
+        True,
+    )
+    assert sorted((s.name, s.category) for s in pack.sounds) == [
+        ("click Soft 1", ""),
+        ("whoosh 002", "Whooshes"),
+    ]
+    assert library.catalog()[0]["installed_pack_id"] == pack.id
+    with pytest.raises(EngineException) as again:
+        library.install_catalog_pack("test-pack", pack_zip.parent)
+    assert "already installed" in again.value.error.message
+    assert not list(library.root.glob(".staging-*"))
+
+
+@pytest.mark.usefixtures("catalog")
+def test_tampered_bundled_pack_is_rejected(tmp_path: Path, pack_zip: Path) -> None:
+    with pack_zip.open("ab") as handle:
+        handle.write(b"x")
+    library = SoundLibraryStore(tmp_path / "ws")
+    with pytest.raises(EngineException) as info:
+        library.install_catalog_pack("test-pack", pack_zip.parent)
+    assert info.value.error.code is ErrorCode.SOURCE_CHANGED
+    assert library.load().packs == []
+    assert not list(library.root.glob(".staging-*"))
+
+
+@pytest.mark.usefixtures("catalog")
+def test_starter_installs_once_and_stays_removed(tmp_path: Path, pack_zip: Path) -> None:
+    library = SoundLibraryStore(tmp_path / "ws")
+    assert library.install_starter(tmp_path / "missing") is None
+    assert library.load().starter_installed is False  # retried once the bundled file exists
+    starter = library.install_starter(pack_zip.parent)
+    assert starter is not None and starter.active
+    library.remove_pack(starter.id)
+    assert library.install_starter(pack_zip.parent) is None
+    assert library.load().packs == []
+
+
+class _Response:
+    def __init__(self, body: bytes, url: str):
+        self._body, self._url = body, url
+
+    def __enter__(self) -> _Response:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    def geturl(self) -> str:
+        return self._url
+
+    def read(self, size: int = -1) -> bytes:
+        chunk, self._body = self._body[:size], self._body[size:]
+        return chunk
+
+
+def _fake_network(monkeypatch: pytest.MonkeyPatch, respond: Callable[[str], _Response]) -> list[str]:
+    requested: list[str] = []
+
+    class Opener:
+        def open(self, request: urllib.request.Request, timeout: int) -> _Response:
+            assert timeout == sound_catalog.DOWNLOAD_TIMEOUT_S
+            assert str(request.get_header("User-agent")).startswith("AgenEditor/")
+            requested.append(request.full_url)
+            return respond(request.full_url)
+
+    monkeypatch.setattr(sound_catalog.urllib.request, "build_opener", lambda *_: Opener())
+    return requested
+
+
+@pytest.mark.usefixtures("catalog")
+def test_download_installs_verified_pack(
+    tmp_path: Path, pack_zip: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = pack_zip.read_bytes()
+    requested = _fake_network(monkeypatch, lambda url: _Response(body, url))
+    library = SoundLibraryStore(tmp_path / "ws")
+    pack, _ = library.install_catalog_pack("test-pack", bundled_dir=None)
+    assert requested == ["https://opengameart.org/sites/default/files/test_pack.zip"]
+    assert len(pack.sounds) == 2
+
+
+@pytest.mark.usefixtures("catalog")
+@pytest.mark.parametrize(
+    ("respond", "code"),
+    [
+        (lambda url: _Response(b"not the pack", url), ErrorCode.SOURCE_CHANGED),
+        (lambda url: _Response(b"x" * 10_000_000, url), ErrorCode.SOURCE_CHANGED),
+        (lambda url: _Response(b"", "https://evil.example/pack.zip"), ErrorCode.DOWNLOAD_FAILED),
+    ],
+)
+def test_bad_downloads_install_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    respond: Callable[[str], _Response],
+    code: ErrorCode,
+) -> None:
+    _fake_network(monkeypatch, respond)
+    library = SoundLibraryStore(tmp_path / "ws")
+    with pytest.raises(EngineException) as info:
+        library.install_catalog_pack("test-pack")
+    assert info.value.error.code is code
+    assert library.load().packs == []
+    assert not list(library.root.glob(".staging-*"))
+
+
+@pytest.mark.usefixtures("catalog")
+def test_offline_download_reports_connection_problem(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def offline(url: str) -> _Response:
+        raise urllib.error.URLError("getaddrinfo failed")
+
+    _fake_network(monkeypatch, offline)
+    with pytest.raises(EngineException) as info:
+        SoundLibraryStore(tmp_path / "ws").install_catalog_pack("test-pack")
+    assert info.value.error.code is ErrorCode.DOWNLOAD_FAILED
+    assert "check your connection" in info.value.error.message
+
+
+def test_real_catalog_is_pinned_and_starter_ships() -> None:
+    entries = sound_catalog.CATALOG
+    assert len({e.id for e in entries}) == len(entries)
+    assert all(e.license is SoundLicense.CC0 for e in entries)
+    assert all(urlsplit(e.download_url).hostname in sound_catalog.ALLOWED_HOSTS for e in entries)
+    bundled = [e for e in entries if e.bundled_file]
+    assert [e.id for e in bundled] == ["kenney-interface-sounds"]
+    shipped = sound_catalog.bundled_sounds_dir() / str(bundled[0].bundled_file)
+    sound_catalog.verify_archive(bundled[0], shipped)
+    with pytest.raises(EngineException):
+        sound_catalog.catalog_entry("not-a-pack")
+
+
+def test_real_starter_pack_installs_all_sounds(tmp_path: Path) -> None:
+    library = SoundLibraryStore(tmp_path / "ws")
+    starter = library.install_starter(sound_catalog.bundled_sounds_dir())
+    assert starter is not None and starter.catalog_id == "kenney-interface-sounds"
+    assert len(starter.sounds) == 100
+    assert library.search("click")["total_matches"] > 0

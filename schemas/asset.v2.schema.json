@@ -193,7 +193,7 @@
       "type": "object"
     },
     "SoundLicense": {
-      "description": "What the person says the pack's licence is. AgenEditor does not verify it.",
+      "description": "The pack's licence. For folder installs it is what the person says; AgenEditor does not verify it.",
       "enum": [
         "cc0",
         "royalty_free",

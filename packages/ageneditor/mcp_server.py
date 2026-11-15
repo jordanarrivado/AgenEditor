@@ -133,9 +133,9 @@ def build_server(workspace: Path, shared_service: bool = False) -> MCPServer:
 
     @server.tool()
     def list_assets(project_id: str) -> list[dict[str, Any]]:
-        """List registered immutable project assets."""
+        """List the project's assets (files the user removed are not listed and cannot be used)."""
         try:
-            return [asset.model_dump(mode="json") for asset in store_for(project_id).assets().values()]
+            return [asset.model_dump(mode="json") for asset in store_for(project_id).active_assets().values()]
         except EngineException as exc:
             raise ToolError(exc.error.model_dump_json()) from exc
 
@@ -202,7 +202,7 @@ def build_server(workspace: Path, shared_service: bool = False) -> MCPServer:
         """Validate a candidate timeline against this project's registered assets."""
         try:
             store = store_for(project_id)
-            issues = store.validation_issues(timeline)
+            issues = [*store.validation_issues(timeline), *store.removed_asset_issues(timeline)]
             return {
                 "valid": not any(issue.severity == "error" for issue in issues),
                 "issues": [issue.model_dump(mode="json") for issue in issues],

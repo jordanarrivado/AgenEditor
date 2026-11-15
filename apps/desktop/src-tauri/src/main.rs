@@ -1,6 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod agent;
+mod polish;
+mod setup;
+mod usage;
 
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
@@ -49,6 +52,8 @@ struct EngineState {
     /// Claude Code session per project, so follow-up prompts continue one conversation.
     sessions: Sessions,
     runs: Mutex<u64>,
+    /// Latest Claude plan usage seen in a run (see usage.rs).
+    usage: usage::UsageSlot,
 }
 
 #[derive(serde::Deserialize)]
@@ -236,6 +241,9 @@ fn engine_desktop_blocking(
         "save_brief",
         "save_asset_checklist",
         "link_asset_request",
+        "approve_asset_request",
+        "replace_asset_request_link",
+        "reset_asset_request",
         "accept_asset_issue",
         "list_jobs",
         "list_revisions",
@@ -243,6 +251,8 @@ fn engine_desktop_blocking(
         "source_range",
         "asset_path",
         "render_path",
+        "remove_asset",
+        "speech_model_status",
         "list_sound_packs",
         "list_sound_catalog",
         "set_active_sound_pack",
@@ -717,6 +727,65 @@ async fn download_sound_pack(
 }
 
 #[tauri::command]
+fn claude_usage(app: tauri::AppHandle, state: State<'_, EngineState>) -> Value {
+    usage::current(&app, &state.usage)
+}
+
+#[tauri::command]
+async fn refresh_claude_usage(
+    app: tauri::AppHandle,
+    state: State<'_, EngineState>,
+) -> Result<Value, String> {
+    let slot = Arc::clone(&state.usage);
+    blocking(move || usage::refresh_blocking(app, slot)).await
+}
+
+/// The only sites the shell opens for B-roll (spec §3.1). The page picks a name, never a URL.
+fn generator_url(site: &str) -> Option<&'static str> {
+    match site {
+        "chatgpt" => Some("https://chatgpt.com/"),
+        "flow" => Some("https://flow.google.com/"),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+fn open_generator(site: String) -> Result<(), String> {
+    let url = generator_url(&site).ok_or("Unknown site")?;
+    let mut command = Command::new("rundll32.exe");
+    command.args(["url.dll,FileProtocolHandler", url]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Could not open the browser: {e}"))
+}
+
+#[tauri::command]
+async fn claude_status() -> Result<Value, String> {
+    blocking(|| Ok(setup::claude_status_blocking())).await
+}
+
+#[tauri::command]
+async fn install_claude_code() -> Result<Value, String> {
+    blocking(setup::install_claude_code_blocking).await
+}
+
+#[tauri::command]
+async fn open_claude_sign_in() -> Result<(), String> {
+    blocking(setup::open_claude_sign_in).await
+}
+
+#[tauri::command]
+async fn polish_instructions(app: tauri::AppHandle, text: String) -> Result<String, String> {
+    blocking(move || polish::polish_instructions_blocking(app, text)).await
+}
+
+#[tauri::command]
 async fn run_agent(
     app: tauri::AppHandle,
     state: State<'_, EngineState>,
@@ -741,6 +810,7 @@ async fn run_agent(
         project_id,
         prompt,
         stage,
+        usage: Arc::clone(&state.usage),
     };
     blocking(move || agent::run_agent_blocking(app, request)).await
 }
@@ -796,6 +866,26 @@ async fn cache_model(app: tauri::AppHandle, preset: String) -> Result<String, St
     blocking(move || cache_model_blocking(app, preset)).await
 }
 
+#[cfg(test)]
+mod tests {
+    use super::generator_url;
+
+    #[test]
+    fn only_chatgpt_and_flow_can_be_opened() {
+        assert_eq!(generator_url("chatgpt"), Some("https://chatgpt.com/"));
+        assert_eq!(generator_url("flow"), Some("https://flow.google.com/"));
+        for other in [
+            "",
+            "gemini",
+            "https://evil.example/",
+            "file:///c:/windows",
+            "chatgpt.com",
+        ] {
+            assert_eq!(generator_url(other), None);
+        }
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -810,6 +900,7 @@ fn main() {
                 agent: Arc::new(Mutex::new(None)),
                 sessions: Arc::new(Mutex::new(HashMap::new())),
                 runs: Mutex::new(0),
+                usage: Arc::new(Mutex::new(None)),
             });
             Ok(())
         })
@@ -835,6 +926,13 @@ fn main() {
             import_dropped_files,
             install_sound_pack,
             download_sound_pack,
+            polish_instructions,
+            claude_status,
+            open_generator,
+            claude_usage,
+            refresh_claude_usage,
+            install_claude_code,
+            open_claude_sign_in,
             run_agent,
             stop_agent,
             new_agent_conversation,

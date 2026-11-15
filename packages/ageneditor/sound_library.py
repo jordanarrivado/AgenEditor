@@ -337,7 +337,7 @@ class SoundLibraryStore:
             raise EngineException(
                 ErrorCode.PERMISSION_DENIED, "that sound's pack is not active; the user must tick it first"
             )
-        for asset in store.assets().values():
+        for asset in store.active_assets().values():
             if asset.role is AssetRole.SFX and asset.sha256 == sound.sha256:
                 return asset
         path = self._sound_path(pack, sound)

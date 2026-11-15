@@ -80,6 +80,15 @@
       "title": "Accepted",
       "type": "object"
     },
+    "approved": {
+      "items": {
+        "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+        "type": "string"
+      },
+      "maxItems": 100,
+      "title": "Approved",
+      "type": "array"
+    },
     "configured": {
       "default": false,
       "title": "Configured",
@@ -115,6 +124,11 @@
       "maxItems": 100,
       "title": "Requests",
       "type": "array"
+    },
+    "review_required": {
+      "default": false,
+      "title": "Review Required",
+      "type": "boolean"
     },
     "schema_version": {
       "const": 1,

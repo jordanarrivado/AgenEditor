@@ -81,6 +81,22 @@ user can change it at any time. All stages share one conversation, so Execute se
 Plan and Review cannot change the edit: the shell disables the engine's editing tools for them (Plan also cannot
 render; Review may render a preview and run QA). With an empty prompt, Execute and Review use a default request.
 
+**B-roll review (added 2026-11-15).** When a Plan reply contains an `asset_requests` block, the app saves it as the
+project's request list and shows a **B-roll to make** card for each request under the preview. Images are made in
+ChatGPT. An AI video is two requests: a storyboard image (`<shot>_storyboard`, one grid of 4–6 numbered frames, made
+in ChatGPT and kept as a reference, never cut into the edit) and the video itself (made in Google Flow with the
+approved storyboard attached). Each card has **Copy prompt & open ChatGPT / Google Flow** (the clipboard gets the
+prompt and the browser opens the site; nothing is sent by AgenEditor), a drop zone or **Browse**, a preview, and
+**Approve**, **Redo**, **Replace file** and **Skip · edit without it**. A dropped file is imported as `broll` (or
+`reference` for storyboards), labelled `generated-external` with the tool name, and linked to that request. A file
+counts as ready only after the person approves it (`review_required` / `approved` on the checklist); a video cannot
+be linked until its storyboard is approved or skipped, and a storyboard cannot be reset while its video is linked.
+Replacing a file is one engine step (`replace_asset_request_link`), so a refused file never costs the person the
+approved one; re-planning keeps a video's file only while its storyboard is still approved or skipped, and a new plan
+that needs no B-roll clears the old list. Execute stays locked in the app, and `commit_timeline` / `start_render` are refused by the engine, until every request
+is approved or skipped. There is no ChatGPT or Flow connector: neither company offers an official one, and
+AgenEditor does not drive their websites or hold their credentials.
+
 Rules: AgenEditor makes no generation API calls and holds no generation credentials. Imported generated files are
 registered like any asset (hash, probe, source-linked IDs) and carry provenance `generated-external` with the tool
 name, shown as **AI-generated (external)** in the bin, plan and export QA report. Prompts sent to external tools
@@ -123,6 +139,21 @@ between V1 clips; other cuts stay hard cuts. A transition never changes the tota
 just past the outgoing clip and half from just before the incoming clip (real source handles when available,
 otherwise a held frame). Dialogue audio keeps its hard cut with edge fades, so speech timing and captions do not
 move. Patches drop transitions whose cut no longer exists; edit plans start without transitions.
+
+### 3.4 Removing files and polishing instructions (added 2026-11-15)
+
+**Removing a file.** Each imported file has a remove control (two clicks). Removal hides the asset: it leaves the
+UI listing, `list_assets`, and sound-effect reuse, and `commit_timeline` / `validate_timeline` reject clips or
+captions that cite it. Nothing is deleted — the read-only project copy stays so earlier revisions and renders
+still resolve, and the user's own file was never touched. Removal is refused while the current revision uses the
+asset or an asset-checklist request links to it. An asset that any earlier revision used may still appear in revisions derived
+from it (revert, patches), so history stays restorable; only brand-new uses of a removed asset are refused, and a
+removed file can no longer be linked to a request. Importing the same file again creates a new asset.
+
+**Polish with Opus.** The user may type rough standing instructions; **Polish with Opus** sends only that text to
+Claude Opus 5.5 (high effort) through Claude Code with no tools, no MCP servers and no saved session. The reply is
+shown as a recommendation; the brief changes only if the user chooses **Use this**. The rewrite keeps every
+stated requirement, adds none, keeps the later of two conflicting notes and marks vague ones as unclear.
 
 **Out of scope:** in-app generation of images/video/music/voices, multicamera editing, advanced motion graphics, full NLE-style realtime frame-accurate playback, collaborative workspaces, subscriptions, stock-asset search, cloud media hosting, timeline interop guarantees with Premiere Pro or DaVinci Resolve.
 

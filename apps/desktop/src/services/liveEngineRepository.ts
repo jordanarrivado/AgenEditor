@@ -156,6 +156,30 @@ export interface AgentResult {
   model?: string;
 }
 
+/** Claude Code on this PC, as checked by the shell. No email or organisation is included. */
+export interface ClaudeSetupStatus {
+  installed: boolean;
+  /** Set when a Claude Code file exists but AgenEditor refuses to run it (e.g. not signed by Anthropic). */
+  problem?: string | null;
+  version: string | null;
+  signed_in: boolean;
+  plan: string | null;
+  method: string | null;
+}
+export type SpeechModelStatus = Record<'tiny' | 'base' | 'small', boolean>;
+
+/** One Claude plan rate-limit window, as Claude Code reports it (utilization 0..1). */
+export interface UsageWindow { utilization: number; resets_at: number | null; status: string }
+/** The latest plan usage Claude Code reported, with when it was captured (unix seconds). */
+export interface ClaudeUsage {
+  status: string;
+  five_hour: UsageWindow | null;
+  seven_day: UsageWindow | null;
+  using_overage: boolean;
+  captured_at: number;
+  last_run?: { stage: AgentStage; model: string; cost_usd: number | null; duration_ms: number | null; finished_at: number };
+}
+
 export interface LiveEngineRepository {
   listProjects(): Promise<EngineProject[]>;
   createProject(name: string, targetDurationFrames: number): Promise<{ project_id: string }>;
@@ -178,6 +202,21 @@ export interface LiveEngineRepository {
   setTransitionStyleActive(style: TransitionStyleId, active: boolean): Promise<TransitionStyleSummary[]>;
   /** Runs Claude Code as the editor for one prompt. Follow-up prompts continue the conversation. */
   runAgent(projectId: string, prompt: string, stage: AgentStage): Promise<AgentResult>;
+  /** Opus 5.5 rewrites rough standing instructions; returns a suggestion, never saves it. */
+  polishInstructions(text: string): Promise<string>;
+  claudeStatus(): Promise<ClaudeSetupStatus>;
+  /** Runs Anthropic's official installer (claude.ai/install.ps1) and checks the signature. */
+  installClaudeCode(): Promise<ClaudeSetupStatus>;
+  /** Opens `claude auth login` in its own window; poll claudeStatus for the result. */
+  openClaudeSignIn(): Promise<void>;
+  speechModelStatus(): Promise<SpeechModelStatus>;
+  /** Latest plan usage seen in a Claude run, or null before the first one. */
+  claudeUsage(): Promise<ClaudeUsage | null>;
+  /** Sends one tiny Haiku request to read current plan usage. */
+  refreshClaudeUsage(): Promise<ClaudeUsage>;
+  onClaudeUsage(handler: (usage: ClaudeUsage) => void): Promise<() => void>;
+  /** Takes a file out of the project (hidden, not deleted); refused while the current edit uses it. */
+  removeAsset(projectId: string, assetId: string): Promise<{ removed: string }>;
   stopAgent(): Promise<boolean>;
   newAgentConversation(projectId: string): Promise<void>;
   onAgentEvent(handler: (projectId: string, event: AgentEvent) => void): Promise<() => void>;
@@ -188,6 +227,14 @@ export interface LiveEngineRepository {
   linkChecklistAsset(projectId: string, requestId: string, assetId: string, expectedVersion: number): Promise<EngineAssetChecklist>;
   /** Records (or, with a null note, clears) a person's decision to use a linked file despite a known issue. */
   acceptChecklistIssue(projectId: string, requestId: string, note: string | null, expectedVersion: number): Promise<EngineAssetChecklist>;
+  /** Records the person's approval of the file linked to a request. */
+  approveChecklistRequest(projectId: string, requestId: string, expectedVersion: number): Promise<EngineAssetChecklist>;
+  /** Swaps a request's file for a new one in one step; on failure the old file and approval stay. */
+  replaceChecklistAsset(projectId: string, requestId: string, assetId: string, expectedVersion: number): Promise<EngineAssetChecklist>;
+  /** Clears a request's file, approval and skip so a new file can be added. */
+  resetChecklistRequest(projectId: string, requestId: string, expectedVersion: number): Promise<EngineAssetChecklist>;
+  /** Opens ChatGPT or Google Flow in the browser. The shell accepts only these two names. */
+  openGenerator(site: 'chatgpt' | 'flow'): Promise<void>;
   getBrief(projectId: string): Promise<EngineBrief>;
   saveBrief(projectId: string, brief: Omit<EngineBrief, 'schema_version' | 'project_id' | 'version'>, expectedVersion: number): Promise<EngineBrief>;
   timeline(projectId: string, revision?: number): Promise<EngineTimeline>;
@@ -233,6 +280,15 @@ export const liveEngineRepository: LiveEngineRepository = {
   listTransitionStyles: () => desktop('list_transition_styles'),
   setTransitionStyleActive: (style, active) => desktop('set_active_transition_style', { style, active }),
   runAgent: (projectId, prompt, stage) => invoke('run_agent', { projectId, prompt, stage }),
+  polishInstructions: (text) => invoke('polish_instructions', { text }),
+  claudeStatus: () => invoke('claude_status'),
+  installClaudeCode: () => invoke('install_claude_code'),
+  openClaudeSignIn: () => invoke('open_claude_sign_in'),
+  speechModelStatus: () => desktop('speech_model_status'),
+  claudeUsage: () => invoke('claude_usage'),
+  refreshClaudeUsage: () => invoke('refresh_claude_usage'),
+  onClaudeUsage: (handler) => listen<ClaudeUsage>('claude-usage', (event) => handler(event.payload)),
+  removeAsset: (projectId, assetId) => desktop('remove_asset', { project_id: projectId, asset_id: assetId }),
   stopAgent: () => invoke('stop_agent'),
   newAgentConversation: (projectId) => invoke('new_agent_conversation', { projectId }),
   onAgentEvent: (handler) => listen<{ project_id: string; event: AgentEvent }>('agent-event', (event) => {
@@ -245,12 +301,25 @@ export const liveEngineRepository: LiveEngineRepository = {
   getChecklist: (projectId) => desktop('get_asset_checklist', { project_id: projectId }),
   saveChecklist: (projectId, checklist, expectedVersion) => desktop('save_asset_checklist', {
     project_id: projectId,
-    checklist: { configured: checklist !== null, requests: checklist?.requests ?? [], links: checklist?.links ?? {}, accepted: checklist?.accepted ?? {} },
+    checklist: {
+      configured: checklist !== null, requests: checklist?.requests ?? [], links: checklist?.links ?? {}, accepted: checklist?.accepted ?? {},
+      review_required: checklist?.review_required ?? false, approved: checklist?.approved ?? [],
+    },
     expected_version: expectedVersion,
   }),
   linkChecklistAsset: (projectId, requestId, assetId, expectedVersion) => desktop('link_asset_request', {
     project_id: projectId, request_id: requestId, asset_id: assetId, expected_version: expectedVersion,
   }),
+  approveChecklistRequest: (projectId, requestId, expectedVersion) => desktop('approve_asset_request', {
+    project_id: projectId, request_id: requestId, expected_version: expectedVersion,
+  }),
+  replaceChecklistAsset: (projectId, requestId, assetId, expectedVersion) => desktop('replace_asset_request_link', {
+    project_id: projectId, request_id: requestId, asset_id: assetId, expected_version: expectedVersion,
+  }),
+  resetChecklistRequest: (projectId, requestId, expectedVersion) => desktop('reset_asset_request', {
+    project_id: projectId, request_id: requestId, expected_version: expectedVersion,
+  }),
+  openGenerator: (site) => invoke('open_generator', { site }),
   getBrief: (projectId) => desktop('get_brief', { project_id: projectId }),
   saveBrief: (projectId, brief, expectedVersion) => desktop('save_brief', {
     project_id: projectId, brief, expected_version: expectedVersion,

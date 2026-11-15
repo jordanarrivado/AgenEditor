@@ -26,7 +26,7 @@ Read before changing code. Specs: [`docs/AGENEDITOR_PRODUCT_SPEC.md`](docs/AGENE
 | `tests/engine/` | pytest (engine) · `tests/unit`, `tests/components` Vitest (UI) · `e2e/` Playwright (UI) |
 | `apps/desktop/src/` | React/TS UI: browser Demo Mode and native live workspace. |
 | `apps/desktop/src-tauri/` | Native shell, IPC, Windows packaging. |
-| `docs/` | Specs and engineering notes (`TIMEBASE.md`, `SECURITY_BOUNDARIES.md`, `LICENSE_INVENTORY.md`) |
+| `docs/` | Specs and engineering notes (`TIMEBASE.md`, `SECURITY_BOUNDARIES.md`, `LICENSE_INVENTORY.md`, `INSTALL_WINDOWS.md`) |
 
 ## Commands
 

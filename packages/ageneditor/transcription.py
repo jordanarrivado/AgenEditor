@@ -447,5 +447,27 @@ class TranscriptionManager:
         return self.store.get_job(job_id)
 
 
+def speech_models_cached() -> dict[str, bool]:
+    """Which faster-whisper presets are already downloaded (checked offline; nothing is fetched).
+
+    Raises ``TRANSCRIPTION_FAILED`` when the check itself is impossible, so a missing library is never
+    reported as "not downloaded".
+    """
+    try:
+        from huggingface_hub import try_to_load_from_cache
+    except ImportError as exc:
+        raise EngineException(
+            ErrorCode.TRANSCRIPTION_FAILED, "the speech model cache could not be checked"
+        ) from exc
+    status = {}
+    for preset in ("tiny", "base", "small"):
+        try:
+            found = try_to_load_from_cache(f"Systran/faster-whisper-{preset}", "model.bin")
+        except Exception:  # a broken cache entry reads as "not downloaded"
+            found = None
+        status[preset] = isinstance(found, str)
+    return status
+
+
 if __name__ == "__main__":
     raise SystemExit(worker_main())

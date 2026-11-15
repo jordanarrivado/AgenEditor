@@ -132,6 +132,9 @@ class ProjectStore:
                     created_at TEXT NOT NULL, current_revision INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS assets(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS removed_assets(
+                    asset_id TEXT PRIMARY KEY, removed_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS asset_checklist(
                     project_id TEXT PRIMARY KEY, version INTEGER NOT NULL, data TEXT NOT NULL
                 );
@@ -313,9 +316,90 @@ class ProjectStore:
         return self.import_asset(self.safe_path(f"imports/{relative_path}"), role, provenance)
 
     def assets(self) -> dict[str, Asset]:
+        """Every asset ever registered, removed ones included, so earlier revisions still render."""
         with self._connect() as db:
             rows = db.execute("SELECT data FROM assets").fetchall()
         return {a.id: a for row in rows if (a := Asset.model_validate_json(row[0]))}
+
+    def removed_asset_ids(self) -> set[str]:
+        with self._connect() as db:
+            return {str(row[0]) for row in db.execute("SELECT asset_id FROM removed_assets")}
+
+    def active_assets(self) -> dict[str, Asset]:
+        """Assets the person has not removed: what the UI lists and the editor may use."""
+        removed = self.removed_asset_ids()
+        return {asset_id: asset for asset_id, asset in self.assets().items() if asset_id not in removed}
+
+    def remove_asset(self, asset_id: str) -> None:
+        """Take an asset out of the project without deleting anything.
+
+        The read-only copy under ``originals/`` stays, because earlier revisions and renders may
+        cite it; the person's own file was never touched. The asset disappears from listings and
+        new revisions may not use it. Refused while the current timeline or a checklist link uses it.
+        """
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute("SELECT 1 FROM assets WHERE id=?", (asset_id,)).fetchone() is None:
+                raise EngineException(ErrorCode.ASSET_NOT_FOUND, "asset does not exist")
+            if db.execute("SELECT 1 FROM removed_assets WHERE asset_id=?", (asset_id,)).fetchone():
+                raise EngineException(ErrorCode.ASSET_NOT_FOUND, "asset was already removed")
+            revision = int(db.execute("SELECT current_revision FROM project").fetchone()[0])
+            row = db.execute("SELECT data FROM timelines WHERE revision=?", (revision,)).fetchone()
+            if row is not None:
+                timeline = Timeline.model_validate_json(row[0])
+                cited = {clip.asset_id for clip in timeline.clips} | {
+                    cue.source_asset_id for cue in timeline.captions
+                }
+                if asset_id in cited:
+                    raise EngineException(
+                        ErrorCode.PERMISSION_DENIED,
+                        f"this file is used in the current edit (revision {revision}); "
+                        "ask Claude to take it out first",
+                    )
+            if asset_id in self._checklist_in(db).links.values():
+                raise EngineException(
+                    ErrorCode.PERMISSION_DENIED, "this file is linked to an asset request; unlink it first"
+                )
+            db.execute("INSERT INTO removed_assets VALUES (?, ?)", (asset_id, datetime.now(UTC).isoformat()))
+
+    def _assets_cited_by_revisions(self) -> set[str]:
+        """Every asset any stored revision's clips or captions cite."""
+        with self._connect() as db:
+            rows = db.execute("SELECT data FROM timelines").fetchall()
+        cited: set[str] = set()
+        for row in rows:
+            data = json.loads(row[0])
+            cited.update(clip["asset_id"] for clip in data.get("clips", []))
+            cited.update(cue["source_asset_id"] for cue in data.get("captions", []))
+        return cited
+
+    def removed_asset_issues(self, timeline: Timeline) -> list[ValidationIssue]:
+        """Errors for clips or captions that newly cite an asset the person removed.
+
+        An asset that an earlier revision already used may stay in revisions derived from it (revert,
+        patches), so history can always be restored; removal only stops brand-new uses.
+        """
+        removed = self.removed_asset_ids()
+        if removed:
+            removed -= self._assets_cited_by_revisions()
+        issues = [
+            ValidationIssue(
+                code=ErrorCode.ASSET_NOT_FOUND,
+                message=f"asset {clip.asset_id!r} was removed from the project",
+                clip_id=clip.clip_id,
+            )
+            for clip in timeline.clips
+            if clip.asset_id in removed
+        ]
+        issues.extend(
+            ValidationIssue(
+                code=ErrorCode.ASSET_NOT_FOUND,
+                message=f"caption {cue.cue_id} cites removed asset {cue.source_asset_id!r}",
+            )
+            for cue in timeline.captions
+            if cue.source_asset_id in removed
+        )
+        return issues
 
     def _checklist_in(self, db: sqlite3.Connection) -> AssetChecklist:
         project = db.execute("SELECT id FROM project LIMIT 1").fetchone()
@@ -342,6 +426,8 @@ class ProjectStore:
             if link in linked_assets:
                 raise EngineException(ErrorCode.INVALID_ARGUMENT, "one asset cannot satisfy two requests")
             linked_assets.add(link)
+            if db.execute("SELECT 1 FROM removed_assets WHERE asset_id=?", (link,)).fetchone():
+                raise EngineException(ErrorCode.ASSET_NOT_FOUND, "that file was removed from the project")
             row = db.execute("SELECT data FROM assets WHERE id=?", (link,)).fetchone()
             if row is None:
                 raise EngineException(ErrorCode.ASSET_NOT_FOUND, "checklist asset is not registered")
@@ -392,6 +478,7 @@ class ProjectStore:
                 raise EngineException(ErrorCode.INVALID_ARGUMENT, "asset request does not exist")
             if request_id in current.links:
                 raise EngineException(ErrorCode.INVALID_ARGUMENT, "reset the request before linking an asset")
+            self._require_storyboard_ready(current, request_id)
             updated = current.model_copy(
                 update={"version": current.version + 1, "links": {**current.links, request_id: asset_id}}
             )
@@ -401,6 +488,112 @@ class ProjectStore:
                 (updated.version, updated.model_dump_json(), self.project_id),
             )
         return updated
+
+    @staticmethod
+    def _require_storyboard_ready(current: AssetChecklist, request_id: str) -> None:
+        storyboard = f"{request_id}_storyboard"
+        if (
+            current.review_required
+            and storyboard in {request.id for request in current.requests}
+            and storyboard not in current.approved
+            and current.links.get(storyboard) != "dropped"
+        ):
+            raise EngineException(
+                ErrorCode.INVALID_ARGUMENT, "approve (or skip) the storyboard before adding this video"
+            )
+
+    @staticmethod
+    def _require_video_not_made(current: AssetChecklist, request_id: str) -> None:
+        video = request_id.removesuffix("_storyboard")
+        if request_id.endswith("_storyboard") and current.links.get(video) not in (None, "dropped"):
+            raise EngineException(
+                ErrorCode.INVALID_ARGUMENT, "reset the video first; it was made from this storyboard"
+            )
+
+    def replace_asset_request_link(
+        self, request_id: str, asset_id: str, expected_version: int
+    ) -> AssetChecklist:
+        """Swap a request's file for a new one in one step, so a failure keeps the old file and approval."""
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = self._checklist_in(db)
+            self._require_checklist_version(current, expected_version, "replacing the file")
+            if not current.configured or request_id not in {request.id for request in current.requests}:
+                raise EngineException(ErrorCode.INVALID_ARGUMENT, "asset request does not exist")
+            self._require_video_not_made(current, request_id)
+            self._require_storyboard_ready(current, request_id)
+            updated = current.model_copy(
+                update={
+                    "version": current.version + 1,
+                    "links": {**current.links, request_id: asset_id},
+                    "approved": [key for key in current.approved if key != request_id],
+                    "accepted": {key: value for key, value in current.accepted.items() if key != request_id},
+                }
+            )
+            self._validate_checklist_links(db, updated)
+            self._save_checklist_in(db, updated)
+        return updated
+
+    def approve_asset_request(self, request_id: str, expected_version: int) -> AssetChecklist:
+        """Record the person's approval of the file linked to a request."""
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = self._checklist_in(db)
+            self._require_checklist_version(current, expected_version, "approving")
+            link = current.links.get(request_id)
+            if link is None or link == "dropped":
+                raise EngineException(
+                    ErrorCode.INVALID_ARGUMENT, "add a file to this request before approving it"
+                )
+            if request_id in current.approved:
+                return current
+            updated = current.model_copy(
+                update={"version": current.version + 1, "approved": [*current.approved, request_id]}
+            )
+            self._save_checklist_in(db, updated)
+        return updated
+
+    def reset_asset_request(self, request_id: str, expected_version: int) -> AssetChecklist:
+        """Clear a request's link, approval and accepted issue so a new file can be added."""
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = self._checklist_in(db)
+            self._require_checklist_version(current, expected_version, "resetting")
+            if request_id not in {request.id for request in current.requests}:
+                raise EngineException(ErrorCode.INVALID_ARGUMENT, "asset request does not exist")
+            if (
+                request_id not in current.links
+                and request_id not in current.approved
+                and request_id not in current.accepted
+            ):
+                return current
+            self._require_video_not_made(current, request_id)
+            links = {key: value for key, value in current.links.items() if key != request_id}
+            updated = current.model_copy(
+                update={
+                    "version": current.version + 1,
+                    "links": links,
+                    "approved": [key for key in current.approved if key != request_id],
+                    "accepted": {key: value for key, value in current.accepted.items() if key != request_id},
+                }
+            )
+            self._save_checklist_in(db, updated)
+        return updated
+
+    @staticmethod
+    def _require_checklist_version(current: AssetChecklist, expected: int, action: str) -> None:
+        if current.version != expected:
+            raise EngineException(
+                ErrorCode.REVISION_CONFLICT,
+                f"asset checklist changed; refresh it before {action}",
+                current_version=current.version,
+            )
+
+    def _save_checklist_in(self, db: sqlite3.Connection, checklist: AssetChecklist) -> None:
+        db.execute(
+            "UPDATE asset_checklist SET version=?, data=? WHERE project_id=?",
+            (checklist.version, checklist.model_dump_json(), self.project_id),
+        )
 
     def brief(self) -> ProjectBrief:
         with self._connect() as db:
@@ -479,6 +672,14 @@ class ProjectStore:
             raise EngineException(
                 ErrorCode.INVALID_ARGUMENT,
                 "asset requests are pending; import and link each file or drop its request",
+            )
+        if checklist.review_required and any(
+            checklist.links[request.id] != "dropped" and request.id not in checklist.approved
+            for request in checklist.requests
+        ):
+            raise EngineException(
+                ErrorCode.INVALID_ARGUMENT,
+                "asset requests are waiting for the person to approve each file or skip it",
             )
 
     def set_asset_labels(self, asset_id: str, labels: list[str]) -> Asset:
@@ -561,7 +762,7 @@ class ProjectStore:
                     "project revision changed",
                     current_revision=row["current_revision"],
                 )
-            issues = self.validation_issues(candidate)
+            issues = [*self.validation_issues(candidate), *self.removed_asset_issues(candidate)]
             errors = [item for item in issues if item.severity == "error"]
             if errors:
                 raise EngineException(

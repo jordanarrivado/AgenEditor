@@ -11,6 +11,7 @@ use std::thread;
 use std::time::Instant;
 use tauri::{Emitter, Manager};
 
+use crate::usage::{self, UsageSlot};
 use crate::{engine_cli, AgentSlot, RunningAgent, Sessions, AGENT_TIMEOUT, MAX_PROMPT_CHARS};
 
 /// Finds the native Claude Code executable (standalone install or the npm package's binary).
@@ -113,10 +114,38 @@ render or add sounds are switched off in this stage.
 - Write the edit plan as a numbered list in playback order: which file, the exact quoted words
   (or time range), and a few words on why. Then any overlays, music, transitions and sound
   effects, and the expected length. Check a speech-based cut with submit_edit_plan when it fits.
-- If the edit needs visuals the user has not added, add a fenced json block with
-  {"asset_requests": [{"id", "kind" (image or video), "purpose", "prompt", "aspect"}]} and say
-  which box to drop the files in once they make them in an outside tool.
-- End with one line: review the plan, then press Execute (or reply with changes).
+- B-roll: after the edit plan, decide whether any shot needs footage or a picture the user has not
+  added. If none does, say "No extra B-roll needed" and skip this section. AgenEditor and you never
+  generate media; the user makes it in outside tools and you only write the prompts. Give each
+  request a short id (broll_01, broll_02...), the playback moment it covers, and why.
+  - Still image B-roll: recommend ChatGPT image generation. Write one ready-to-paste ChatGPT
+    prompt that names the subject, setting, lighting, style and camera angle, says "vertical" or
+    the project's aspect ratio, and asks for no text or logos in the picture.
+  - AI video B-roll: recommend this two-step route, in this order:
+    1. Storyboard in ChatGPT: write one ChatGPT prompt that asks for a single storyboard image,
+       a grid of 4 to 6 numbered frames showing the key moments of the shot in order (start,
+       action, end), with consistent characters, setting and style in every frame.
+    2. Video in Google Flow: write one Flow prompt for text-with-image to video. It must say
+       the attached storyboard image shows the frames in order, describe the motion and camera
+       movement between them, and give the duration (4 to 8 seconds) and aspect ratio.
+    Tell the user the storyboard must be generated and approved first, and that the storyboard
+    picture is then attached in Flow with the Flow prompt.
+  - Then add one fenced json block, using only these fields:
+    {"asset_requests": [{"id", "kind" (image or video), "purpose", "prompt", "aspect"}]}.
+    Image request: kind image, prompt = the ChatGPT prompt. Video shot: first an image request
+    with id "<shot id>_storyboard", kind image, purpose "storyboard for <shot id>", prompt = the
+    ChatGPT storyboard prompt; then a video request with id "<shot id>", kind video, prompt = the
+    Flow prompt. Keep storyboards ahead of their video in the list.
+  - Tell the user that after this reply a "B-roll to make" list appears under the preview, with one
+    card per request: each card copies its prompt and opens ChatGPT or Google Flow, takes the
+    finished file by drop, and has an Approve button. Files dropped on a card are labelled as
+    AI-generated automatically, and storyboards are kept as references and never cut into the
+    edit. The video card unlocks once its storyboard is approved. Execute stays locked until
+    every card is approved or skipped.
+  - Remind the user to check each ChatGPT image and each storyboard before the next step; you
+    cannot see the pictures yourself.
+- End with one line: review the plan, make any B-roll in ChatGPT and Google Flow and add it, then
+  press Execute (or reply with changes).
 - The 120-word limit below does not apply to a plan, and a fenced json block is allowed; keep
   the rest scannable."#
             }
@@ -255,6 +284,7 @@ pub struct AgentRequest {
     pub project_id: String,
     pub prompt: String,
     pub stage: Stage,
+    pub usage: UsageSlot,
 }
 
 fn write_config(
@@ -289,6 +319,7 @@ pub fn run_agent_blocking(app: tauri::AppHandle, request: AgentRequest) -> Resul
         project_id,
         prompt,
         stage,
+        usage,
     } = request;
     if !valid_project_id(&project_id) {
         return Err("Invalid project".into());
@@ -302,9 +333,7 @@ pub fn run_agent_blocking(app: tauri::AppHandle, request: AgentRequest) -> Resul
             "Keep the prompt under {MAX_PROMPT_CHARS} characters"
         ));
     }
-    let claude = find_claude().ok_or(
-        "Claude Code was not found. Install it from claude.com/claude-code and sign in once in a terminal.",
-    )?;
+    let claude = crate::setup::trusted_claude()?;
     let (dir, mcp_config, instructions) = write_config(&app, &workspace, &project_id, stage)?;
     let resumed = sessions
         .lock()
@@ -414,6 +443,7 @@ pub fn run_agent_blocking(app: tauri::AppHandle, request: AgentRequest) -> Resul
                 }
                 break;
             }
+            usage::record_event(&app, &usage, &value);
             for event in agent_events(&value) {
                 let _ = app.emit(
                     "agent-event",
@@ -453,6 +483,9 @@ pub fn run_agent_blocking(app: tauri::AppHandle, request: AgentRequest) -> Resul
             }
             _ => {}
         }
+    }
+    if let Some(done) = &result {
+        usage::record_run(&app, &usage, stage.id(), stage.model(), done);
     }
     if let Some(reason) = stopped {
         return Ok(json!({"ok": false, "stopped": reason, "text": null, "stage": stage.id()}));
@@ -537,6 +570,22 @@ mod tests {
         let commit_step = "commit_timeline with expected_revision";
         assert!(editor_instructions("p1", Stage::Execute).contains(commit_step));
         assert!(!editor_instructions("p1", Stage::Plan).contains(commit_step));
+        // The Plan stage recommends outside tools for B-roll and never generates media itself.
+        let plan = editor_instructions("p1", Stage::Plan);
+        for needle in [
+            "ChatGPT image generation",
+            "storyboard",
+            "Google Flow",
+            "_storyboard",
+            "never
+  generate media",
+        ] {
+            assert!(
+                plan.contains(needle),
+                "plan instructions are missing: {needle}"
+            );
+        }
+        assert!(!editor_instructions("p1", Stage::Execute).contains("Google Flow"));
     }
 
     #[test]

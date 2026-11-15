@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight, Check, ChevronDown, Download, Eye, Film, Folder, Layers, Loader2, Lock, Mic, Music2, PenLine, Play, Plus,
-  ShieldCheck, Sparkles, Square, Upload, Wrench,
+  ArrowRight, Check, ChevronDown, Download, Eye, Film, Folder, House, Layers, Loader2, Lock, Mic, Music2, PenLine, Play, Plus,
+  ShieldCheck, Sparkles, Square, Upload, Wand2, Wrench, X,
 } from 'lucide-react';
 import {
   liveEngineRepository as engine,
   type AgentEvent,
   type AgentStage,
   type EngineAsset,
+  type EngineAssetChecklist,
   type EngineBrief,
   type EngineConnection,
   type EngineJob,
@@ -18,7 +19,14 @@ import {
 } from '../../services/liveEngineRepository';
 import { ClaudeMarkdown } from '../../components/common/ClaudeMarkdown';
 import { BrandMark } from '../../components/common/Brand';
-import { Badge, Button, Kbd } from '../../components/ui/primitives';
+import { Badge, Button, IconButton, Kbd } from '../../components/ui/primitives';
+import { engineErrorText } from '../../utils/engineError';
+import { isStoryboard, mergePlanRequests, reviewProgress, reviewState } from '../../utils/assetChecklist';
+import { parseAssetRequests, type AssetRequest } from '../../utils/assetRequests';
+import { BrollPanel, toolFor } from './BrollPanel';
+import { HomeView } from './HomeView';
+import { SetupPanel } from './SetupPanel';
+import { UsageBadge } from './UsageBadge';
 import { SectionLabel } from './SectionLabel';
 import { SoundLibraryPanel } from './SoundLibraryPanel';
 import { TransitionsPanel } from './TransitionsPanel';
@@ -26,7 +34,7 @@ import { TransitionsPanel } from './TransitionsPanel';
 const field = 'w-full rounded-lg border border-line bg-app px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-3 focus:border-accent';
 const card = 'rounded-xl border border-line bg-surface';
 
-const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
+const errorText = engineErrorText;
 
 /** One line in the Claude conversation. */
 export type OutputEntry =
@@ -82,7 +90,7 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 export const SimpleWorkspace: React.FC = () => {
-  const [projects, setProjects] = useState<EngineProject[]>([]);
+  const [projects, setProjects] = useState<EngineProject[] | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const currentProjectId = useRef(projectId);
   currentProjectId.current = projectId;
@@ -108,6 +116,14 @@ export const SimpleWorkspace: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [modelState, setModelState] = useState<'idle' | 'installing'>('idle');
+  // Remove asks for a second click; `removing` is the asset being removed right now.
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  // B-roll requests from the plan (made in ChatGPT / Google Flow) and the one being attached now.
+  const [checklist, setChecklist] = useState<EngineAssetChecklist | null>(null);
+  const [attaching, setAttaching] = useState<string | null>(null);
+  const [polishing, setPolishing] = useState(false);
+  const [polished, setPolished] = useState<{ from: string; text: string } | null>(null);
   const [stylesOn, setStylesOn] = useState({ transitions: 0, sounds: 0 });
   const onTransitionsOn = useCallback((count: number) => setStylesOn((on) => ({ ...on, transitions: count })), []);
   const onSoundsOn = useCallback((count: number) => setStylesOn((on) => ({ ...on, sounds: count })), []);
@@ -122,13 +138,13 @@ export const SimpleWorkspace: React.FC = () => {
 
   const refreshLibrary = useCallback(async () => {
     const list = await engine.listProjects();
+    // Only the list changes here; which project is open is decided by the person (open, create, Home).
     setProjects(list);
-    setProjectId((current) => current ?? list[0]?.id ?? null);
   }, []);
 
   const refreshProject = useCallback(async (id: string) => {
-    const [summary, timeline, storedBrief, projectJobs] = await Promise.all([
-      engine.summary(id), engine.timeline(id), engine.getBrief(id), engine.listJobs(id),
+    const [summary, timeline, storedBrief, projectJobs, storedChecklist] = await Promise.all([
+      engine.summary(id), engine.timeline(id), engine.getBrief(id), engine.listJobs(id), engine.getChecklist(id),
     ]);
     if (id !== currentProjectId.current) return;
     setAssets(summary.assets);
@@ -136,6 +152,7 @@ export const SimpleWorkspace: React.FC = () => {
     setBrief(storedBrief);
     setInstructions(storedBrief.brief_text);
     setJobs(projectJobs);
+    setChecklist(storedChecklist);
   }, []);
 
   useEffect(() => {
@@ -146,10 +163,13 @@ export const SimpleWorkspace: React.FC = () => {
   useEffect(() => {
     setAssets([]);
     setBrief(null);
+    setChecklist(null);
     setJobs([]);
     setPreviewUrl(null);
     shownPreview.current = null;
     setQA(null);
+    setPolished(null);
+    setConfirmRemove(null);
     if (projectId) void refreshProject(projectId).catch((error) => setNotice(errorText(error)));
   }, [projectId, refreshProject]);
 
@@ -212,7 +232,11 @@ export const SimpleWorkspace: React.FC = () => {
   // The shell keeps the dropped paths; the page only learns which box the drop landed on.
   const dropHandler = useRef<(drop: { count: number; x: number; y: number }) => void>(() => undefined);
   dropHandler.current = (drop) => {
-    const box = document.elementFromPoint(drop.x, drop.y)?.closest<HTMLElement>('[data-bucket]');
+    const target = document.elementFromPoint(drop.x, drop.y);
+    const requestId = target?.closest<HTMLElement>('[data-request]')?.dataset.request;
+    const request = requestId ? checklist?.requests.find((item) => item.id === requestId) : undefined;
+    if (request) { void attachToRequest(request, true); return; }
+    const box = target?.closest<HTMLElement>('[data-bucket]');
     if (!box) { setNotice('Drop files onto Main footage, References or Assets.'); return; }
     importInto(box.dataset.bucket as ImportBucket, true);
   };
@@ -225,6 +249,25 @@ export const SimpleWorkspace: React.FC = () => {
     return () => { cancelled = true; unlisten?.(); };
   }, []);
 
+  const refreshConnection = useCallback(() => {
+    void engine.connection().then(setConnection).catch(() => undefined);
+  }, []);
+
+  const openProject = (id: string) => {
+    setCreating(false);
+    setNotice(null);
+    setProjectId(id);
+  };
+
+  const goHome = () => {
+    if (running) return;
+    setCreating(false);
+    setNotice(null);
+    setProjectId(null);
+    // Revisions may have changed while the project was open.
+    void refreshLibrary().catch((error) => setNotice(errorText(error)));
+  };
+
   const createProject = () => {
     const name = newName.trim();
     if (!name) return;
@@ -235,11 +278,11 @@ export const SimpleWorkspace: React.FC = () => {
       .finally(() => setBusy(false));
   };
 
-  const saveInstructions = async () => {
-    if (!projectId || !brief || instructions === brief.brief_text) return;
+  const saveInstructions = async (text = instructions) => {
+    if (!projectId || !brief || text === brief.brief_text) return;
     try {
       setBrief(await engine.saveBrief(projectId, {
-        brief_text: instructions, script_text: brief.script_text, reference_note: brief.reference_note, checklist: brief.checklist,
+        brief_text: text, script_text: brief.script_text, reference_note: brief.reference_note, checklist: brief.checklist,
       }, brief.version));
     } catch (error) {
       setNotice(`Instructions not saved: ${errorText(error)}`);
@@ -247,10 +290,83 @@ export const SimpleWorkspace: React.FC = () => {
     }
   };
 
+  /**
+   * Imports a file picked or dropped for a B-roll request, labels it AI-generated (external) with the
+   * tool the request calls for, and links it to that request. The person then reviews and approves it.
+   */
+  const attachToRequest = async (request: AssetRequest, dropped: boolean) => {
+    if (!projectId || !checklist || attaching || running) return;
+    if (reviewState(checklist, request.id) === 'locked') {
+      setNotice('Approve (or skip) the storyboard first, then add this video.');
+      return;
+    }
+    const id = projectId;
+    setAttaching(request.id);
+    setNotice(null);
+    let imported: EngineAsset | null = null;
+    try {
+      const role = isStoryboard(request.id) ? 'reference' : 'broll';
+      imported = await (dropped ? engine.importDroppedMedia(id, role, toolFor(request)) : engine.importMedia(id, role, toolFor(request)));
+      if (!imported) return; // picker cancelled
+      if (imported.kind !== request.kind) {
+        throw new Error(`${imported.original_filename} is a ${imported.kind === 'audio' ? 'sound file' : imported.kind}, but this item needs ${request.kind === 'image' ? 'an image' : 'a video'}.`);
+      }
+      let list = await engine.getChecklist(id);
+      const previous = list.links[request.id];
+      // Replacing is one engine step, so a refused file never costs the person the approved one.
+      list = previous
+        ? await engine.replaceChecklistAsset(id, request.id, imported.id, list.version)
+        : await engine.linkChecklistAsset(id, request.id, imported.id, list.version);
+      if (previous && previous !== 'dropped') void engine.removeAsset(id, previous).catch(() => undefined);
+      const added = imported;
+      imported = null;
+      if (currentProjectId.current === id) setChecklist(list);
+      setNotice(`Added ${added.original_filename}. Look it over on its card, then approve it.`);
+    } catch (error) {
+      // Do not leave a rejected file behind in the project.
+      if (imported) void engine.removeAsset(id, imported.id).catch(() => undefined);
+      setNotice(errorText(error));
+    } finally {
+      setAttaching(null);
+      if (currentProjectId.current === id) void refreshProject(id).catch(() => undefined);
+    }
+  };
+
+  /** When a Plan reply lists B-roll, save it as the project's to-do list; the Execute lock follows from it. */
+  const adoptPlanRequests = async (id: string, text: string | null) => {
+    if (!text) return;
+    const hasBlock = text.includes('"asset_requests"');
+    const saysNone = /no extra b-?roll needed/i.test(text);
+    if (!hasBlock && !saysNone) return;
+    let requests: AssetRequest[] = [];
+    if (hasBlock) {
+      const parsed = parseAssetRequests(text);
+      if (!parsed.ok) {
+        append(id, { kind: 'status', tone: 'warn', text: `The plan's B-roll list could not be read (${parsed.error}) Ask Claude to fix it.` });
+        return;
+      }
+      requests = parsed.requests;
+    }
+    const current = await engine.getChecklist(id);
+    if (requests.length === 0) {
+      // The new plan needs no B-roll: drop an older list so it cannot keep Execute locked.
+      if (current.configured && current.requests.length > 0) {
+        const cleared = await engine.saveChecklist(id, null, current.version);
+        if (currentProjectId.current === id) setChecklist(cleared);
+        append(id, { kind: 'status', tone: 'ok', text: 'The new plan needs no B-roll, so the earlier B-roll list was cleared. Files you already added stay in your Assets.' });
+      }
+      return;
+    }
+    const saved = await engine.saveChecklist(id, mergePlanRequests(current.configured ? current : null, requests), current.version);
+    if (currentProjectId.current === id) setChecklist(saved);
+    const { done, total } = reviewProgress(saved);
+    append(id, { kind: 'status', tone: 'ok', text: `The plan lists ${total} B-roll item${total === 1 ? '' : 's'} (${done} ready). Make them in ChatGPT and Google Flow from "B-roll to make", then approve each one before Execute.` });
+  };
+
   const send = async () => {
     const runStage = stage;
     const text = prompt.trim() || currentStage.fallbackPrompt || '';
-    if (!projectId || !text || running) return;
+    if (!projectId || !text || running || executeLocked) return;
     const id = projectId;
     try { await saveInstructions(); } catch { return; }
     setRunning(true);
@@ -264,6 +380,7 @@ export const SimpleWorkspace: React.FC = () => {
       else {
         const next = NEXT_STAGE[runStage];
         if (result.text) append(id, { kind: 'status', tone: 'ok', text: `${stageInfo(runStage).label} done. Next: ${stageInfo(next).label}.` });
+        if (runStage === 'plan') await adoptPlanRequests(id, result.text).catch((error) => append(id, { kind: 'status', tone: 'error', text: `B-roll list not saved: ${errorText(error)}` }));
         chooseStage(id, next);
       }
     } catch (error) {
@@ -281,6 +398,41 @@ export const SimpleWorkspace: React.FC = () => {
       setOutputs((all) => ({ ...all, [id]: [] }));
       setStages(({ [id]: _dropped, ...rest }) => rest);
     });
+  };
+
+  const removeAsset = (asset: EngineAsset) => {
+    if (!projectId) return;
+    if (confirmRemove !== asset.id) { setConfirmRemove(asset.id); return; }
+    const id = projectId;
+    setConfirmRemove(null);
+    setRemoving(asset.id);
+    setNotice(null);
+    void engine.removeAsset(id, asset.id)
+      .then(async () => {
+        await refreshProject(id);
+        setNotice(`Removed ${asset.original_filename} from this project. Your own file is untouched, and earlier revisions that used it still play.`);
+      })
+      .catch((error) => setNotice(`${asset.original_filename} was not removed: ${errorText(error)}`))
+      .finally(() => setRemoving(null));
+  };
+
+  const polishInstructions = () => {
+    const from = instructions.trim();
+    if (!from || polishing) return;
+    setPolishing(true);
+    setPolished(null);
+    setNotice(null);
+    void engine.polishInstructions(from)
+      .then((text) => setPolished({ from, text }))
+      .catch((error) => setNotice(errorText(error)))
+      .finally(() => setPolishing(false));
+  };
+
+  const acceptPolished = () => {
+    if (!polished) return;
+    setInstructions(polished.text);
+    setPolished(null);
+    void saveInstructions(polished.text).catch(() => undefined);
   };
 
   const applySuggestion = (text: string) => {
@@ -318,6 +470,8 @@ export const SimpleWorkspace: React.FC = () => {
 
   const hasMain = assets.some((asset) => asset.role === 'primary');
   const claudeMissing = connection?.claude_available === false;
+  const brollProgress = reviewProgress(checklist?.configured ? checklist : null);
+  const executeLocked = stage === 'execute' && !brollProgress.complete;
   const steps = [
     { title: 'Add main footage', text: 'The video Claude will cut.', done: hasMain },
     { title: 'Choose styles', text: stylesOn.transitions + stylesOn.sounds > 0 ? 'Transitions and sounds are set.' : 'Tick transition styles or sound packs.', done: stylesOn.transitions + stylesOn.sounds > 0 },
@@ -329,17 +483,18 @@ export const SimpleWorkspace: React.FC = () => {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-app text-fg">
       <header className="flex h-16 shrink-0 items-center gap-3 border-b border-line bg-sidebar px-5">
-        <div className="flex items-center gap-2.5">
+        <button type="button" className="flex items-center gap-2.5 rounded-lg disabled:cursor-default" onClick={goHome} disabled={running || !projectId} title={projectId ? 'Home' : undefined} aria-label="AgenEditor home">
           <BrandMark size={30} />
           <span className="text-lg font-semibold tracking-tight">AgenEditor</span>
           <Badge tone="accent">Alpha</Badge>
-        </div>
+        </button>
+        {projectId && <>
         <span aria-hidden className="mx-1 h-7 w-px bg-line" />
+        <Button variant="ghost" size="lg" icon={<House className="h-4 w-4" />} onClick={goHome} disabled={running} title={running ? 'Claude is working; wait or press Stop first' : undefined}>Home</Button>
         <div className="relative">
           <Folder aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-3" />
           <select aria-label="Project" className="h-9 max-w-[16rem] appearance-none rounded-lg border border-line bg-surface pl-9 pr-8 text-sm font-medium text-fg outline-none focus:border-accent disabled:opacity-60" value={projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)} disabled={running}>
-            {projects.length === 0 && <option value="">No projects yet</option>}
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+            {(projects ?? []).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
           </select>
           <ChevronDown aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-3" />
         </div>
@@ -350,7 +505,10 @@ export const SimpleWorkspace: React.FC = () => {
             <Button size="lg" onClick={() => setCreating(false)}>Cancel</Button>
           </form>
         ) : <Button variant="ghost" size="lg" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)} disabled={running}>New project</Button>}
-        <span className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-xs">
+        </>}
+        <span className="ml-auto" />
+        <UsageBadge />
+        <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-xs">
           <span aria-hidden className={`h-2 w-2 rounded-full ${connection?.connected ? 'bg-success' : 'bg-warning animate-pulse'}`} />
           <span className={connection?.connected ? 'text-success' : 'text-warning'}>{connection?.connected ? 'Engine connected' : 'Engine starting…'}</span>
           <span aria-hidden className="text-fg-3">·</span>
@@ -367,10 +525,18 @@ export const SimpleWorkspace: React.FC = () => {
       )}
 
       {!projectId ? (
-        <div className="m-auto space-y-3 text-center">
-          <p className="text-fg-2">Create a project to start.</p>
-          <Button variant="primary" size="lg" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>New project</Button>
-        </div>
+        <HomeView
+          projects={projects}
+          creating={creating}
+          newName={newName}
+          busy={busy}
+          onNewName={setNewName}
+          onStartCreate={() => setCreating(true)}
+          onCancelCreate={() => { setCreating(false); setNewName(''); }}
+          onCreate={createProject}
+          onOpen={openProject}
+          setup={<SetupPanel engineConnected={Boolean(connection?.connected)} onChanged={refreshConnection} />}
+        />
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-[18.5rem_minmax(0,1fr)_21rem] xl:grid-cols-[21rem_minmax(0,1fr)_24rem]">
           {/* ---- Left: media and styles ---------------------------------------------------- */}
@@ -397,7 +563,7 @@ export const SimpleWorkspace: React.FC = () => {
                     {files.length > 0 && (
                       <ul className="space-y-1.5" aria-label={`${bucket.title} files`}>
                         {files.map((asset) => (
-                          <li key={asset.id} className="flex items-center gap-2.5 rounded-lg border border-line bg-app px-2.5 py-2">
+                          <li key={asset.id} className={`flex items-center gap-2.5 rounded-lg border bg-app px-2.5 py-2 ${confirmRemove === asset.id ? 'border-danger/50' : 'border-line'}`}>
                             <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-elevated text-fg-3">
                               {asset.video ? <Play className="h-3.5 w-3.5" /> : <Music2 className="h-3.5 w-3.5" />}
                             </span>
@@ -407,6 +573,15 @@ export const SimpleWorkspace: React.FC = () => {
                               {asset.provenance?.origin === 'generated-external' && <p className="text-xs text-warning">AI-generated (external) · {asset.provenance.tool_name}</p>}
                               {asset.provenance?.library && <p className="text-xs text-fg-2">from {asset.provenance.library.pack_name}{asset.provenance.library.credit ? ` · credit: ${asset.provenance.library.credit}` : ''}</p>}
                             </div>
+                            {removing === asset.id
+                              ? <Loader2 aria-label={`Removing ${asset.original_filename}`} className="h-4 w-4 shrink-0 animate-spin text-fg-3" />
+                              : confirmRemove === asset.id
+                                ? <Button variant="danger" size="sm" className="shrink-0" onClick={() => removeAsset(asset)} onBlur={() => setConfirmRemove(null)} autoFocus>Remove?</Button>
+                                : (
+                                  <IconButton label={`Remove ${asset.original_filename}`} size="sm" className="shrink-0 hover:text-danger" disabled={running || removing !== null} onClick={() => removeAsset(asset)}>
+                                    <X className="h-4 w-4" />
+                                  </IconButton>
+                                )}
                           </li>
                         ))}
                       </ul>
@@ -437,7 +612,25 @@ export const SimpleWorkspace: React.FC = () => {
                 <label htmlFor="instructions" className="text-xs font-semibold uppercase tracking-[0.08em] text-fg-2">Instructions</label>
                 <span className="text-xs text-fg-3">optional · used for every prompt</span>
               </div>
-              <textarea id="instructions" className={field} rows={3} maxLength={20000} placeholder="Standing rules, e.g. 9:16 vertical, under 45 seconds, keep my logo at the end, no music." value={instructions} onChange={(e) => setInstructions(e.target.value)} onBlur={() => void saveInstructions().catch(() => undefined)} />
+              <textarea id="instructions" className={field} rows={4} maxLength={20000} placeholder="Jot down rules in any order, e.g. vertical, 45s max, no music, big yellow captions, logo at the end. Polish tidies them up." value={instructions} onChange={(e) => setInstructions(e.target.value)} onBlur={() => void saveInstructions().catch(() => undefined)} />
+              <div className="flex items-center gap-2">
+                <Button size="md" icon={polishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} disabled={!instructions.trim() || polishing || claudeMissing} onClick={polishInstructions}>
+                  {polishing ? 'Polishing…' : 'Polish with Opus'}
+                </Button>
+                <span className="min-w-0 text-xs text-fg-3">Opus 5.5 · high turns rough notes into clear rules</span>
+              </div>
+              {polished && (
+                <div role="region" aria-label="Polished instructions" className="space-y-2.5 rounded-xl border border-accent/50 bg-accent/8 p-3">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-accent"><Sparkles className="h-3.5 w-3.5" /> Recommended by Opus 5.5</p>
+                  <p className="whitespace-pre-wrap text-sm text-fg">{polished.text}</p>
+                  {polished.from !== instructions.trim() && <p className="text-xs text-warning">You changed your notes since polishing; using this replaces them.</p>}
+                  <div className="flex gap-2">
+                    <Button variant="primary" size="md" icon={<Check className="h-4 w-4" />} onClick={acceptPolished}>Use this</Button>
+                    <Button size="md" onClick={() => setPolished(null)}>Keep mine</Button>
+                  </div>
+                  <p className="text-xs text-fg-3">Your notes are sent to Anthropic to polish. Nothing changes until you choose Use this.</p>
+                </div>
+              )}
             </section>
           </aside>
 
@@ -470,6 +663,11 @@ export const SimpleWorkspace: React.FC = () => {
                 <p className={`font-semibold ${qa.report.overall === 'pass' ? 'text-success' : qa.report.overall === 'fail' ? 'text-danger' : 'text-warning'}`}>Technical check: {qa.report.overall}</p>
                 <ul className="mt-1 text-xs text-fg-2">{qa.report.checks.filter((check) => check.status !== 'pass').map((check) => <li key={check.check_id}>{check.check_id}: {check.measured ?? check.message}</li>)}</ul>
               </div>
+            )}
+
+            {projectId && checklist?.configured && checklist.requests.length > 0 && (
+              <BrollPanel projectId={projectId} checklist={checklist} assets={assets} disabled={running} attaching={attaching}
+                onBrowse={(request) => void attachToRequest(request, false)} onChange={setChecklist} onNotice={setNotice} />
             )}
 
             {revision === 0 && (
@@ -531,6 +729,7 @@ export const SimpleWorkspace: React.FC = () => {
                 ))}
               </div>
               <p className="text-xs text-fg-3">{currentStage.hint}</p>
+              {executeLocked && <p role="status" className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">Execute is locked: {brollProgress.done} of {brollProgress.total} B-roll items are ready. Approve or skip each one under "B-roll to make".</p>}
 
               <div className="rounded-xl border border-line bg-app focus-within:border-accent">
                 <label htmlFor="prompt" className="sr-only">Prompt</label>
@@ -543,13 +742,13 @@ export const SimpleWorkspace: React.FC = () => {
                   {running
                     ? <Button size="lg" className="ml-auto" icon={<Square className="h-4 w-4" />} onClick={() => void engine.stopAgent()}>Stop</Button>
                     : (
-                      <Button variant="primary" size="lg" className="ml-auto" disabled={(!prompt.trim() && !currentStage.fallbackPrompt) || claudeMissing} onClick={() => void send()}>
+                      <Button variant="primary" size="lg" className="ml-auto" disabled={(!prompt.trim() && !currentStage.fallbackPrompt) || claudeMissing || executeLocked} onClick={() => void send()}>
                         Send to {currentStage.label} <ArrowRight className="h-4 w-4" />
                       </Button>
                     )}
                 </div>
               </div>
-              {claudeMissing && <p className="text-xs text-warning">Claude Code isn't installed. Install it from claude.com/claude-code and sign in once in a terminal, then restart AgenEditor.</p>}
+              {claudeMissing && <p className="text-xs text-warning">Claude Code isn't installed on this PC. Go to Home and use Set up this PC to install it and sign in.</p>}
               <p className="flex items-start gap-1.5 text-xs text-fg-3"><Lock aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" /> Claude edits only through AgenEditor's tools. Your prompt, filenames, file details and transcripts go to Anthropic; video files are never uploaded.</p>
             </div>
           </aside>

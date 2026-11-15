@@ -207,6 +207,10 @@ class DesktopService:
             return {"project_id": store.project_id, "name": name, "current_revision": 0}
         if operation.endswith("sound_pack") or operation in {"list_sound_packs", "list_sound_catalog"}:
             return self._sound_library_call(operation, args)
+        if operation == "speech_model_status":
+            from ageneditor.transcription import speech_models_cached
+
+            return speech_models_cached()
         if operation in {"list_transition_styles", "set_active_transition_style"}:
             from ageneditor.contracts.transition import TransitionStyle
             from ageneditor.transitions import TransitionLibrary
@@ -220,7 +224,8 @@ class DesktopService:
         if operation == "project_summary":
             with store._connect() as db:
                 row = db.execute("SELECT id, name, created_at, current_revision FROM project").fetchone()
-            return {**dict(row), "assets": [a.model_dump(mode="json") for a in store.assets().values()]}
+            assets = store.active_assets().values()
+            return {**dict(row), "assets": [a.model_dump(mode="json") for a in assets]}
         if operation == "get_asset_checklist":
             return store.asset_checklist().model_dump(mode="json")
         if operation == "save_asset_checklist":
@@ -237,6 +242,17 @@ class DesktopService:
         if operation == "save_brief":
             candidate = ProjectBrief.model_validate({**args["brief"], "project_id": project_id})
             return store.save_brief(candidate, int(args["expected_version"])).model_dump(mode="json")
+        if operation == "replace_asset_request_link":
+            saved = store.replace_asset_request_link(
+                str(args["request_id"]), str(args["asset_id"]), int(args["expected_version"])
+            )
+            return saved.model_dump(mode="json")
+        if operation == "approve_asset_request":
+            saved = store.approve_asset_request(str(args["request_id"]), int(args["expected_version"]))
+            return saved.model_dump(mode="json")
+        if operation == "reset_asset_request":
+            saved = store.reset_asset_request(str(args["request_id"]), int(args["expected_version"]))
+            return saved.model_dump(mode="json")
         if operation == "accept_asset_issue":
             note = args.get("note")
             saved = store.accept_asset_issue(
@@ -277,6 +293,11 @@ class DesktopService:
             with store.audited("desktop_import", role=str(args["role"])):
                 asset = store.import_asset(path, AssetRole(str(args["role"])), provenance)
             return asset.model_dump(mode="json")
+        if operation == "remove_asset":
+            asset_id = str(args["asset_id"])
+            with store.audited("desktop_remove_asset", asset_id=asset_id):
+                store.remove_asset(asset_id)
+            return {"removed": asset_id}
         if operation == "asset_path":
             asset = store.assets().get(str(args["asset_id"]))
             if asset is None:

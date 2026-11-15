@@ -10,6 +10,7 @@ import {
 } from '../../services/liveEngineRepository';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/primitives';
+import { engineErrorText } from '../../utils/engineError';
 import { SectionLabel } from './SectionLabel';
 
 const field = 'w-full rounded-lg border border-line bg-app px-3 py-2 text-sm text-fg outline-none focus:border-accent';
@@ -22,17 +23,7 @@ export const LICENSE_LABELS: Record<SoundLicense, string> = {
 };
 const SHORT_LICENSE: Record<SoundLicense, string> = { cc0: 'CC0', royalty_free: 'Royalty-free', cc_by: 'CC BY', other: 'Other licence' };
 
-/** Engine errors reach the page as JSON text (`{"code":…,"message":…}`); show just the message. */
-const errorText = (error: unknown) => {
-  const text = error instanceof Error ? error.message : String(error);
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (parsed && typeof parsed === 'object' && typeof (parsed as { message?: unknown }).message === 'string') {
-      return (parsed as { message: string }).message;
-    }
-  } catch { /* plain text */ }
-  return text;
-};
+const errorText = engineErrorText;
 const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const EMPTY: SoundPackDetails = { name: '', license: 'cc0', credit: '', source: '' };

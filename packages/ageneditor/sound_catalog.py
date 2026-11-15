@@ -35,7 +35,7 @@ _OGA = "https://opengameart.org"
 CATALOG: tuple[SoundCatalogEntry, ...] = (
     SoundCatalogEntry(
         id="kenney-interface-sounds",
-        name="Interface Sounds (Kenney)",
+        name="Interface Sounds",
         description="Clicks, pops, ticks, toggles, glass dings, confirmations and errors.",
         author="Kenney",
         license=SoundLicense.CC0,
@@ -48,7 +48,7 @@ CATALOG: tuple[SoundCatalogEntry, ...] = (
     ),
     SoundCatalogEntry(
         id="kenney-ui-sfx",
-        name="UI Sound Effects (Kenney)",
+        name="UI Sound Effects",
         description="Button clicks, switches, rollovers and mouse clicks.",
         author="Kenney",
         license=SoundLicense.CC0,
@@ -60,7 +60,7 @@ CATALOG: tuple[SoundCatalogEntry, ...] = (
     ),
     SoundCatalogEntry(
         id="kenney-digital-sfx",
-        name="Digital Sound Effects (Kenney)",
+        name="Digital Sound Effects",
         description="Lasers, phasers, power-ups, zaps and other synth blips.",
         author="Kenney",
         license=SoundLicense.CC0,
@@ -72,7 +72,7 @@ CATALOG: tuple[SoundCatalogEntry, ...] = (
     ),
     SoundCatalogEntry(
         id="kenney-rpg-sfx",
-        name="RPG Sound Effects (Kenney)",
+        name="RPG Sound Effects",
         description="Footsteps, doors, cloth, coins, books, metal and wood handling.",
         author="Kenney",
         license=SoundLicense.CC0,
@@ -84,7 +84,7 @@ CATALOG: tuple[SoundCatalogEntry, ...] = (
     ),
     SoundCatalogEntry(
         id="kenney-casino-sfx",
-        name="Casino Sound Effects (Kenney)",
+        name="Casino Sound Effects",
         description="Cards, dice, chips and shuffles.",
         author="Kenney",
         license=SoundLicense.CC0,
@@ -96,7 +96,7 @@ CATALOG: tuple[SoundCatalogEntry, ...] = (
     ),
     SoundCatalogEntry(
         id="kenney-sci-fi-sounds",
-        name="Sci-Fi Sounds (Kenney)",
+        name="Sci-Fi Sounds",
         description="Engines, lasers, doors, force fields, explosions and computer noise.",
         author="Kenney",
         license=SoundLicense.CC0,

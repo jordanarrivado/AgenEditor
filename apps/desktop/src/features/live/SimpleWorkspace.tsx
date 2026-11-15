@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Clapperboard, Download, FileVideo2, Film, Images, Loader2, Plus, Send, Sparkles, Square, Upload, Wrench } from 'lucide-react';
+import {
+  ArrowRight, Check, ChevronDown, Download, Eye, Film, Folder, Layers, Loader2, Lock, Mic, Music2, PenLine, Play, Plus,
+  ShieldCheck, Sparkles, Square, Upload, Wrench,
+} from 'lucide-react';
 import {
   liveEngineRepository as engine,
   type AgentEvent,
@@ -14,17 +17,18 @@ import {
   type ImportOutcome,
 } from '../../services/liveEngineRepository';
 import { ClaudeMarkdown } from '../../components/common/ClaudeMarkdown';
+import { BrandMark } from '../../components/common/Brand';
+import { Badge, Button, Kbd } from '../../components/ui/primitives';
+import { SectionLabel } from './SectionLabel';
 import { SoundLibraryPanel } from './SoundLibraryPanel';
 import { TransitionsPanel } from './TransitionsPanel';
 
-const button = 'inline-flex items-center justify-center gap-1.5 rounded-lg border border-line px-3 py-2 text-sm font-medium text-fg hover:bg-elevated disabled:opacity-40 disabled:cursor-not-allowed';
-const primary = `${button} border-accent bg-accent text-on-accent hover:bg-accent-hover`;
-const panel = 'rounded-xl border border-line bg-surface p-4';
-const field = 'w-full rounded-lg border border-line bg-app px-3 py-2 text-sm text-fg outline-none focus:border-accent';
+const field = 'w-full rounded-lg border border-line bg-app px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-3 focus:border-accent';
+const card = 'rounded-xl border border-line bg-surface';
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-/** One line in the Output conversation. */
+/** One line in the Claude conversation. */
 export type OutputEntry =
   | { kind: 'prompt'; text: string; stage?: AgentStage }
   | { kind: 'text'; text: string }
@@ -44,9 +48,18 @@ const NEXT_STAGE: Record<AgentStage, AgentStage> = { plan: 'execute', execute: '
 const stageInfo = (id: AgentStage) => STAGES.find((stage) => stage.id === id) ?? STAGES[0];
 
 const BUCKETS: { id: ImportBucket; title: string; hint: string; icon: React.ReactNode; roles: EngineAsset['role'][] }[] = [
-  { id: 'main', title: 'Main footage', hint: 'The video you want edited.', icon: <FileVideo2 className="w-4 h-4" />, roles: ['primary'] },
-  { id: 'reference', title: 'References', hint: 'Examples of the style or pacing you want. Never cut into the video.', icon: <Images className="w-4 h-4" />, roles: ['reference'] },
-  { id: 'asset', title: 'Assets', hint: 'B-roll, images, logos and music the editor may use.', icon: <Film className="w-4 h-4" />, roles: ['broll', 'logo', 'music', 'sfx'] },
+  { id: 'main', title: 'Main footage', hint: 'The video you want edited. Add several at once.', icon: <Film className="h-5 w-5" />, roles: ['primary'] },
+  { id: 'reference', title: 'References', hint: 'Style or pacing examples. Never cut into your video.', icon: <Eye className="h-5 w-5" />, roles: ['reference'] },
+  { id: 'asset', title: 'Assets', hint: 'B-roll, images, logos and music Claude may use.', icon: <Layers className="h-5 w-5" />, roles: ['broll', 'logo', 'music', 'sfx'] },
+];
+const ROLE_LABELS: Record<EngineAsset['role'], string> = {
+  primary: 'Main footage', broll: 'B-roll', music: 'Music', logo: 'Logo', subtitles: 'Subtitles', reference: 'Reference', sfx: 'Sound effect',
+};
+
+const SUGGESTIONS = [
+  'Cut this into a 30-second 9:16 highlight',
+  'Remove silences and filler words',
+  'Match the pacing of my reference clip',
 ];
 
 const TOOL_LABELS: Record<string, string> = {
@@ -62,6 +75,10 @@ const TOOL_LABELS: Record<string, string> = {
   submit_edit_plan: 'Checking an edit plan',
   start_render: 'Rendering a preview',
   get_job_status: 'Waiting for the render',
+  run_qa: 'Running the technical check',
+  list_transitions: 'Checking transition styles',
+  list_sound_effects: 'Searching sound effects',
+  add_sound_effect: 'Adding a sound effect',
 };
 
 export const SimpleWorkspace: React.FC = () => {
@@ -80,6 +97,7 @@ export const SimpleWorkspace: React.FC = () => {
   const [importing, setImporting] = useState<ImportBucket | null>(null);
   const [toolName, setToolName] = useState('');
   const [prompt, setPrompt] = useState('');
+  const promptRef = useRef<HTMLTextAreaElement>(null);
   const [outputs, setOutputs] = useState<Record<string, OutputEntry[]>>({});
   const [running, setRunning] = useState(false);
   // Chosen stage per project; until the person picks one, a fresh project plans first.
@@ -90,6 +108,9 @@ export const SimpleWorkspace: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [modelState, setModelState] = useState<'idle' | 'installing'>('idle');
+  const [stylesOn, setStylesOn] = useState({ transitions: 0, sounds: 0 });
+  const onTransitionsOn = useCallback((count: number) => setStylesOn((on) => ({ ...on, transitions: count })), []);
+  const onSoundsOn = useCallback((count: number) => setStylesOn((on) => ({ ...on, sounds: count })), []);
 
   const output = projectId ? outputs[projectId] ?? [] : [];
   const stage: AgentStage = (projectId && stages[projectId]) || (revision === 0 ? 'plan' : 'execute');
@@ -161,6 +182,10 @@ export const SimpleWorkspace: React.FC = () => {
       .catch(() => undefined);
     return () => { cancelled = true; unlisten?.(); };
   }, [append]);
+
+  // Keep the newest conversation line in view.
+  const logEnd = useRef<HTMLLIElement>(null);
+  useEffect(() => { logEnd.current?.scrollIntoView?.({ block: 'end' }); }, [output.length, running]);
 
   const reportImports = (outcomes: ImportOutcome[] | null) => {
     if (!outcomes) return;
@@ -258,6 +283,11 @@ export const SimpleWorkspace: React.FC = () => {
     });
   };
 
+  const applySuggestion = (text: string) => {
+    setPrompt(text);
+    promptRef.current?.focus();
+  };
+
   const run = (task: () => Promise<void>) => {
     setBusy(true);
     setNotice(null);
@@ -288,137 +318,242 @@ export const SimpleWorkspace: React.FC = () => {
 
   const hasMain = assets.some((asset) => asset.role === 'primary');
   const claudeMissing = connection?.claude_available === false;
+  const steps = [
+    { title: 'Add main footage', text: 'The video Claude will cut.', done: hasMain },
+    { title: 'Choose styles', text: stylesOn.transitions + stylesOn.sounds > 0 ? 'Transitions and sounds are set.' : 'Tick transition styles or sound packs.', done: stylesOn.transitions + stylesOn.sounds > 0 },
+    { title: 'Describe the edit', text: 'Tell Claude what to make.', done: output.length > 0 || revision > 0 },
+  ];
+  const stepsDone = steps.filter((step) => step.done).length;
+  const jobSummary = activeJobs.map((job) => `${job.kind === 'final_render' ? 'final' : job.kind === 'preview_render' ? 'preview' : job.kind} ${Math.round(job.progress * 100)}%`).join(', ');
 
   return (
-    <div className="flex h-screen flex-col bg-app text-fg overflow-hidden">
-      <header className="flex flex-wrap items-center gap-3 border-b border-line bg-sidebar px-4 py-3">
-        <div className="flex items-center gap-2 font-bold"><Clapperboard className="w-5 h-5 text-accent" /> AgenEditor</div>
-        <select aria-label="Project" className="rounded-lg border border-line bg-app px-3 py-1.5 text-sm max-w-[16rem]" value={projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)} disabled={running}>
-          {projects.length === 0 && <option value="">No projects yet</option>}
-          {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-        </select>
+    <div className="flex h-screen flex-col overflow-hidden bg-app text-fg">
+      <header className="flex h-16 shrink-0 items-center gap-3 border-b border-line bg-sidebar px-5">
+        <div className="flex items-center gap-2.5">
+          <BrandMark size={30} />
+          <span className="text-lg font-semibold tracking-tight">AgenEditor</span>
+          <Badge tone="accent">Alpha</Badge>
+        </div>
+        <span aria-hidden className="mx-1 h-7 w-px bg-line" />
+        <div className="relative">
+          <Folder aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-3" />
+          <select aria-label="Project" className="h-9 max-w-[16rem] appearance-none rounded-lg border border-line bg-surface pl-9 pr-8 text-sm font-medium text-fg outline-none focus:border-accent disabled:opacity-60" value={projectId ?? ''} onChange={(e) => setProjectId(e.target.value || null)} disabled={running}>
+            {projects.length === 0 && <option value="">No projects yet</option>}
+            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </select>
+          <ChevronDown aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-3" />
+        </div>
         {creating ? (
-          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); createProject(); }}>
-            <input autoFocus aria-label="New project name" className={`${field} py-1.5 w-48`} placeholder="Project name" value={newName} maxLength={100} onChange={(e) => setNewName(e.target.value)} />
-            <button className={primary} disabled={busy || !newName.trim()} type="submit">Create</button>
-            <button className={button} type="button" onClick={() => setCreating(false)}>Cancel</button>
+          <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); createProject(); }}>
+            <input autoFocus aria-label="New project name" className={`${field} h-9 w-48 py-0`} placeholder="Project name" value={newName} maxLength={100} onChange={(e) => setNewName(e.target.value)} />
+            <Button variant="primary" size="lg" type="submit" disabled={busy || !newName.trim()}>Create</Button>
+            <Button size="lg" onClick={() => setCreating(false)}>Cancel</Button>
           </form>
-        ) : <button className={button} onClick={() => setCreating(true)} disabled={running}><Plus className="w-4 h-4" /> New project</button>}
-        <span className="ml-auto text-xs text-fg-3">{connection?.connected ? '● Engine connected' : 'Engine starting…'} · files stay on this computer</span>
+        ) : <Button variant="ghost" size="lg" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)} disabled={running}>New project</Button>}
+        <span className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-xs">
+          <span aria-hidden className={`h-2 w-2 rounded-full ${connection?.connected ? 'bg-success' : 'bg-warning animate-pulse'}`} />
+          <span className={connection?.connected ? 'text-success' : 'text-warning'}>{connection?.connected ? 'Engine connected' : 'Engine starting…'}</span>
+          <span aria-hidden className="text-fg-3">·</span>
+          <Lock aria-hidden className="h-3.5 w-3.5 text-fg-3" />
+          <span className="text-fg-2">Files stay on this computer</span>
+        </span>
       </header>
 
-      {notice && <div role="status" className="mx-4 mt-3 whitespace-pre-line rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm break-words">{notice}</div>}
+      {notice && (
+        <div role="status" className="mx-5 mt-3 flex items-start gap-3 whitespace-pre-line break-words rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 text-sm">
+          <span className="min-w-0 flex-1">{notice}</span>
+          <button type="button" className="text-xs text-fg-3 hover:text-fg" onClick={() => setNotice(null)}>Dismiss</button>
+        </div>
+      )}
 
       {!projectId ? (
-        <div className="m-auto text-center space-y-3"><p className="text-fg-2">Create a project to start.</p><button className={primary} onClick={() => setCreating(true)}><Plus className="w-4 h-4" /> New project</button></div>
+        <div className="m-auto space-y-3 text-center">
+          <p className="text-fg-2">Create a project to start.</p>
+          <Button variant="primary" size="lg" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>New project</Button>
+        </div>
       ) : (
-        <main className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-y-auto lg:overflow-hidden p-4">
-          <div className="space-y-4 lg:overflow-y-auto lg:pr-1">
-            <section aria-labelledby="imports-title" className="space-y-3">
-              <h2 id="imports-title" className="text-sm font-semibold uppercase tracking-wider text-fg-2">Imports</h2>
+        <div className="grid min-h-0 flex-1 grid-cols-[18.5rem_minmax(0,1fr)_21rem] xl:grid-cols-[21rem_minmax(0,1fr)_24rem]">
+          {/* ---- Left: media and styles ---------------------------------------------------- */}
+          <aside aria-label="Media and styles" className="min-h-0 space-y-7 overflow-y-auto overflow-x-hidden border-r border-line bg-sidebar px-4 py-5">
+            <section aria-labelledby="media-title" className="space-y-2.5">
+              <SectionLabel id="media-title" title="Media" meta="Drop files onto a box" />
               {BUCKETS.map((bucket) => {
                 const files = assets.filter((asset) => bucket.roles.includes(asset.role));
                 return (
-                  <div key={bucket.id} data-bucket={bucket.id} data-testid={`bucket-${bucket.id}`} className={`${panel} border-dashed space-y-2`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="flex items-center gap-2 font-semibold">{bucket.icon} {bucket.title} <span className="text-xs font-normal text-fg-3">{files.length || ''}</span></h3>
-                      <button className={button} disabled={importing !== null || running} onClick={() => importInto(bucket.id, false)}>
-                        {importing === bucket.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Browse
-                      </button>
+                  <div key={bucket.id} data-bucket={bucket.id} data-testid={`bucket-${bucket.id}`} className={`${card} space-y-3 border-dashed p-3.5`}>
+                    <div className="flex items-start gap-3">
+                      <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">{bucket.icon}</span>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold">
+                          {bucket.title}
+                          {bucket.id === 'main' && files.length === 0 && <Badge tone="warning">Required</Badge>}
+                          {files.length > 0 && <Badge>{files.length}</Badge>}
+                        </h3>
+                        <p className="mt-0.5 text-xs leading-snug text-fg-3">{bucket.hint}</p>
+                      </div>
+                      <Button className="shrink-0" disabled={importing !== null || running} onClick={() => importInto(bucket.id, false)}
+                        icon={importing === bucket.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}>Browse</Button>
                     </div>
-                    <p className="text-xs text-fg-3">{bucket.hint} Drop files here; you can add several at once.</p>
                     {files.length > 0 && (
-                      <ul className="space-y-1 text-xs">
+                      <ul className="space-y-1.5" aria-label={`${bucket.title} files`}>
                         {files.map((asset) => (
-                          <li key={asset.id} className="flex flex-wrap gap-x-2 rounded-md bg-app px-2 py-1">
-                            <span className="font-medium truncate max-w-full">{asset.original_filename}</span>
-                            <span className="text-fg-3">{asset.video ? `${asset.video.width}×${asset.video.height}` : 'audio'}{bucket.id === 'asset' ? ` · ${asset.role === 'sfx' ? 'sound effect' : asset.role}` : ''}</span>
-                            {asset.provenance?.origin === 'generated-external' && <span className="text-warning">AI-generated (external) · {asset.provenance.tool_name}</span>}
-                            {asset.provenance?.library && <span className="text-fg-2">from {asset.provenance.library.pack_name}{asset.provenance.library.credit ? ` · credit: ${asset.provenance.library.credit}` : ''}</span>}
+                          <li key={asset.id} className="flex items-center gap-2.5 rounded-lg border border-line bg-app px-2.5 py-2">
+                            <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-elevated text-fg-3">
+                              {asset.video ? <Play className="h-3.5 w-3.5" /> : <Music2 className="h-3.5 w-3.5" />}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium" title={asset.original_filename}>{asset.original_filename}</p>
+                              <p className="text-xs text-fg-3">{asset.video ? `${asset.video.width} × ${asset.video.height}` : 'Audio'} · {ROLE_LABELS[asset.role]}</p>
+                              {asset.provenance?.origin === 'generated-external' && <p className="text-xs text-warning">AI-generated (external) · {asset.provenance.tool_name}</p>}
+                              {asset.provenance?.library && <p className="text-xs text-fg-2">from {asset.provenance.library.pack_name}{asset.provenance.library.credit ? ` · credit: ${asset.provenance.library.credit}` : ''}</p>}
+                            </div>
                           </li>
                         ))}
                       </ul>
                     )}
-                    {bucket.id === 'asset' && (
-                      <label className="block text-xs text-fg-2">Made with an AI tool? Name it so the files are labelled (leave empty for your own files)
-                        <input className={`${field} mt-1 py-1.5`} placeholder="e.g. Google Flow" maxLength={100} value={toolName} onChange={(e) => setToolName(e.target.value)} />
-                      </label>
-                    )}
                     {bucket.id === 'main' && (
-                      <button className="text-xs text-accent hover:underline disabled:opacity-40" disabled={modelState === 'installing'} onClick={installModel}>
-                        {modelState === 'installing' ? 'Installing speech model…' : 'Install speech model (once, for footage with talking)'}
+                      <button type="button" className="flex items-start gap-1.5 text-left text-xs font-medium leading-snug text-accent hover:underline disabled:opacity-40 [&>svg]:mt-px [&>svg]:shrink-0" disabled={modelState === 'installing'} onClick={installModel}>
+                        {modelState === 'installing' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mic className="h-3.5 w-3.5" />}
+                        {modelState === 'installing' ? 'Installing speech model…' : 'Install speech model · one-time, for footage with talking'}
                       </button>
+                    )}
+                    {bucket.id === 'asset' && (
+                      <label className="block text-xs font-medium text-fg-2">Made with an AI tool? <span className="font-normal text-fg-3">Optional</span>
+                        <input className={`${field} mt-1.5`} placeholder="e.g. Google Flow" maxLength={100} value={toolName} onChange={(e) => setToolName(e.target.value)} />
+                        <span className="mt-1 block font-normal text-fg-3">Labels these files. Leave empty for your own footage.</span>
+                      </label>
                     )}
                   </div>
                 );
               })}
             </section>
 
-            <SoundLibraryPanel disabled={running} onNotice={setNotice} />
+            <TransitionsPanel disabled={running} onNotice={setNotice} onActiveCount={onTransitionsOn} />
 
-            <TransitionsPanel disabled={running} onNotice={setNotice} />
+            <SoundLibraryPanel disabled={running} onNotice={setNotice} onActiveCount={onSoundsOn} />
 
-            <section className={`${panel} space-y-2`}>
-              <label htmlFor="instructions" className="font-semibold block">Instructions <span className="text-xs font-normal text-fg-3">applied to every prompt · optional</span></label>
+            <section className="space-y-2.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <label htmlFor="instructions" className="text-xs font-semibold uppercase tracking-[0.08em] text-fg-2">Instructions</label>
+                <span className="text-xs text-fg-3">optional · used for every prompt</span>
+              </div>
               <textarea id="instructions" className={field} rows={3} maxLength={20000} placeholder="Standing rules, e.g. 9:16 vertical, under 45 seconds, keep my logo at the end, no music." value={instructions} onChange={(e) => setInstructions(e.target.value)} onBlur={() => void saveInstructions().catch(() => undefined)} />
             </section>
+          </aside>
 
-            <section className={`${panel} space-y-2`}>
-              <div role="radiogroup" aria-label="Claude stage" className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-app p-1">
+          {/* ---- Centre: output ------------------------------------------------------------- */}
+          <main aria-labelledby="output-title" className="min-h-0 space-y-5 overflow-y-auto overflow-x-hidden px-6 py-5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h2 id="output-title" className="text-lg font-semibold">Output</h2>
+              <Badge className="px-2 py-1 text-xs">Revision {revision}</Badge>
+              {jobSummary && <span className="inline-flex items-center gap-1.5 text-xs text-fg-3"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {jobSummary}</span>}
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                {revision === 0 && <span className="text-xs text-fg-3">Exports unlock after the first edit</span>}
+                <Button size="lg" icon={<ShieldCheck className="h-4 w-4" />} disabled={busy || !latestFinal} onClick={checkAndSave}>Check &amp; save MP4…</Button>
+                <Button variant="primary" size="lg" icon={<Download className="h-4 w-4" />} disabled={busy || running || revision === 0} onClick={renderFinal}>Render final MP4</Button>
+              </div>
+            </div>
+
+            <div className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-2xl border border-line bg-black">
+              {previewUrl ? <video key={previewUrl} className="h-full w-full" controls src={previewUrl} /> : (
+                <div className="space-y-3 px-6 text-center">
+                  <span aria-hidden className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-line bg-surface text-fg-2"><Play className="ml-0.5 h-5 w-5" /></span>
+                  <p className="font-semibold text-fg">Your edit will play here</p>
+                  <p className="mx-auto max-w-sm text-sm text-fg-3">Claude renders a preview after each edit, so you can review before exporting.</p>
+                </div>
+              )}
+            </div>
+            {latestPreview && <p className="-mt-2 text-xs text-fg-3">Preview of revision {latestPreview.timeline_revision}{latestPreview.timeline_revision !== revision ? ` · newer revision ${revision} not rendered yet` : ''}</p>}
+
+            {qa && latestFinal && qa.jobId === latestFinal.id && (
+              <div className={`${card} p-4 text-sm`}>
+                <p className={`font-semibold ${qa.report.overall === 'pass' ? 'text-success' : qa.report.overall === 'fail' ? 'text-danger' : 'text-warning'}`}>Technical check: {qa.report.overall}</p>
+                <ul className="mt-1 text-xs text-fg-2">{qa.report.checks.filter((check) => check.status !== 'pass').map((check) => <li key={check.check_id}>{check.check_id}: {check.measured ?? check.message}</li>)}</ul>
+              </div>
+            )}
+
+            {revision === 0 && (
+              <section aria-labelledby="get-started-title" className={`${card} space-y-4 p-5`}>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 id="get-started-title" className="font-semibold">Get started</h3>
+                  <span className="text-xs text-fg-3">{stepsDone} of {steps.length} done</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-elevated" role="progressbar" aria-label="Setup progress" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={stepsDone}>
+                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${(stepsDone / steps.length) * 100}%` }} />
+                </div>
+                <ol className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                  {steps.map((step, index) => (
+                    <li key={step.title} className="flex items-start gap-3 rounded-xl border border-line bg-app/50 p-3.5">
+                      <span aria-hidden className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${step.done ? 'bg-success text-on-accent' : 'border border-accent/60 text-accent'}`}>
+                        {step.done ? <Check className="h-4 w-4" strokeWidth={3} /> : index + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-semibold">{step.title}<span className="sr-only">{step.done ? ' (done)' : ''}</span></p>
+                        <p className="text-xs text-fg-3">{step.text}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+          </main>
+
+          {/* ---- Right: Claude -------------------------------------------------------------- */}
+          <aside aria-label="Claude" className="flex min-h-0 flex-col border-l border-line bg-sidebar">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-3">
+              <h2 className="flex items-center gap-2 font-semibold"><Sparkles className="h-4 w-4 text-accent" /> Claude</h2>
+              <Button variant="ghost" icon={<PenLine className="h-4 w-4" />} disabled={running || output.length === 0} onClick={newConversation}>New conversation</Button>
+            </div>
+
+            <ol data-testid="output-log" aria-label="Conversation" className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overflow-x-hidden px-4 py-4 text-sm">
+              {output.length === 0 && (
+                <li className="mt-auto space-y-2.5">
+                  <p className="text-fg-2">Claude's replies show up here. Not sure where to start? Try one:</p>
+                  {SUGGESTIONS.map((text) => (
+                    <button key={text} type="button" className="block w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left text-sm text-fg hover:border-accent/60 hover:bg-elevated disabled:opacity-50" disabled={running} onClick={() => applySuggestion(text)}>{text}</button>
+                  ))}
+                </li>
+              )}
+              {output.map((entry, index) => <OutputLine key={index} entry={entry} />)}
+              {running && <li className="flex items-center gap-2 text-fg-3"><Loader2 className="h-4 w-4 animate-spin" /> Claude is working ({currentStage.label} · {currentStage.model})…</li>}
+              <li ref={logEnd} aria-hidden className="h-0" />
+            </ol>
+
+            <div className="shrink-0 space-y-3 border-t border-line p-4">
+              <div role="radiogroup" aria-label="Claude stage" className="grid grid-cols-3 gap-1 rounded-xl border border-line bg-app p-1">
                 {STAGES.map((item) => (
                   <button key={item.id} type="button" role="radio" aria-checked={stage === item.id} disabled={running}
                     onClick={() => projectId && chooseStage(projectId, item.id)}
-                    className={`rounded-md px-2 py-1.5 text-left disabled:opacity-60 ${stage === item.id ? 'bg-accent text-on-accent' : 'text-fg-2 hover:bg-elevated'}`}>
-                    <span className="block text-sm font-semibold">{item.label}</span>
-                    <span className={`block text-xs ${stage === item.id ? 'opacity-90' : 'text-fg-3'}`}>{item.model}</span>
+                    className={`rounded-lg px-2.5 py-2 text-left transition-colors disabled:opacity-60 ${stage === item.id ? 'bg-surface shadow-sm ring-1 ring-accent/60' : 'hover:bg-surface/60'}`}>
+                    <span className={`block text-sm font-semibold ${stage === item.id ? 'text-fg' : 'text-fg-2'}`}>{item.label}</span>
+                    <span className="block text-[11px] leading-tight text-fg-3">{item.model}</span>
                   </button>
                 ))}
               </div>
               <p className="text-xs text-fg-3">{currentStage.hint}</p>
-              <label htmlFor="prompt" className="font-semibold block">Prompt</label>
-              <textarea id="prompt" className={field} rows={4} maxLength={20000} placeholder={hasMain ? 'Tell Claude what to make, e.g. "Cut this into a punchy 30 second teaser, start with the strongest line."' : 'Add your main footage first, then tell Claude what to make.'} value={prompt} onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }} />
-              <div className="flex flex-wrap items-center gap-2">
-                {running
-                  ? <button className={button} onClick={() => void engine.stopAgent()}><Square className="w-4 h-4" /> Stop</button>
-                  : <button className={primary} disabled={(!prompt.trim() && !currentStage.fallbackPrompt) || claudeMissing} onClick={() => void send()}><Send className="w-4 h-4" /> Send to {currentStage.label}</button>}
-                <span className="text-xs text-fg-3">Ctrl+Enter to send</span>
-                <button className="ml-auto text-xs text-fg-3 hover:text-fg disabled:opacity-40" disabled={running || output.length === 0} onClick={newConversation}>New conversation</button>
+
+              <div className="rounded-xl border border-line bg-app focus-within:border-accent">
+                <label htmlFor="prompt" className="sr-only">Prompt</label>
+                <textarea id="prompt" ref={promptRef} className="block w-full resize-none bg-transparent px-3.5 pt-3 text-sm text-fg outline-none placeholder:text-fg-3" rows={4} maxLength={20000}
+                  placeholder={!hasMain ? 'Add your main footage first, then describe the edit you want…' : currentStage.fallbackPrompt ? `Optional · empty sends "${currentStage.fallbackPrompt}"` : 'Describe the edit you want…'}
+                  value={prompt} onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }} />
+                <div className="flex items-center gap-2 px-3 pb-3 pt-1">
+                  <span className="flex items-center gap-1 text-xs text-fg-3"><Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> to send</span>
+                  {running
+                    ? <Button size="lg" className="ml-auto" icon={<Square className="h-4 w-4" />} onClick={() => void engine.stopAgent()}>Stop</Button>
+                    : (
+                      <Button variant="primary" size="lg" className="ml-auto" disabled={(!prompt.trim() && !currentStage.fallbackPrompt) || claudeMissing} onClick={() => void send()}>
+                        Send to {currentStage.label} <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    )}
+                </div>
               </div>
               {claudeMissing && <p className="text-xs text-warning">Claude Code isn't installed. Install it from claude.com/claude-code and sign in once in a terminal, then restart AgenEditor.</p>}
-              <p className="text-xs text-fg-3">Claude Code edits through AgenEditor's tools only. It sends your prompt, filenames, file details and transcripts to Anthropic; your video files are not uploaded.</p>
-            </section>
-          </div>
-
-          <section aria-labelledby="output-title" className={`${panel} flex min-h-[28rem] flex-col gap-3 lg:overflow-hidden`}>
-            <div className="flex items-center justify-between gap-2">
-              <h2 id="output-title" className="font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4 text-accent" /> Output</h2>
-              <span className="text-xs text-fg-3">Revision {revision}{activeJobs.length > 0 ? ` · ${activeJobs.map((job) => `${job.kind === 'final_render' ? 'final' : job.kind === 'preview_render' ? 'preview' : job.kind} ${Math.round(job.progress * 100)}%`).join(', ')}` : ''}</span>
+              <p className="flex items-start gap-1.5 text-xs text-fg-3"><Lock aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" /> Claude edits only through AgenEditor's tools. Your prompt, filenames, file details and transcripts go to Anthropic; video files are never uploaded.</p>
             </div>
-
-            <div className="aspect-video w-full shrink-0 overflow-hidden rounded-lg bg-black flex items-center justify-center">
-              {previewUrl ? <video key={previewUrl} className="h-full w-full" controls src={previewUrl} /> : <p className="text-sm text-fg-3 px-4 text-center">The preview appears here after Claude renders an edit.</p>}
-            </div>
-            {latestPreview && <p className="text-xs text-fg-3 -mt-1">Preview of revision {latestPreview.timeline_revision}{latestPreview.timeline_revision !== revision ? ` · newer revision ${revision} not rendered yet` : ''}</p>}
-
-            <ol data-testid="output-log" aria-label="Conversation" className="flex-1 min-h-[8rem] space-y-2 overflow-y-auto text-sm">
-              {output.length === 0 && <li className="text-fg-3">Claude's replies show up here.</li>}
-              {output.map((entry, index) => <OutputLine key={index} entry={entry} />)}
-              {running && <li className="flex items-center gap-2 text-fg-3"><Loader2 className="w-4 h-4 animate-spin" /> Claude is working…</li>}
-            </ol>
-
-            <div className="flex flex-wrap gap-2 border-t border-line pt-3">
-              <button className={button} disabled={busy || running || revision === 0} onClick={renderFinal}>Render final MP4</button>
-              <button className={primary} disabled={busy || !latestFinal} onClick={checkAndSave}><Download className="w-4 h-4" /> Check &amp; save MP4…</button>
-            </div>
-            {qa && latestFinal && qa.jobId === latestFinal.id && (
-              <div className="text-xs">
-                <p className={qa.report.overall === 'pass' ? 'text-success' : qa.report.overall === 'fail' ? 'text-danger' : 'text-warning'}>Technical check: {qa.report.overall}</p>
-                <ul className="text-fg-2">{qa.report.checks.filter((check) => check.status !== 'pass').map((check) => <li key={check.check_id}>{check.check_id}: {check.measured ?? check.message}</li>)}</ul>
-              </div>
-            )}
-          </section>
-        </main>
+          </aside>
+        </div>
       )}
     </div>
   );
@@ -428,15 +563,15 @@ const OutputLine: React.FC<{ entry: OutputEntry }> = ({ entry }) => {
   switch (entry.kind) {
     case 'prompt':
       return (
-        <li className="ml-8 rounded-lg bg-accent/15 px-3 py-2">
+        <li className="ml-8 rounded-xl bg-accent/15 px-3.5 py-2.5">
           {entry.stage && <span className="mb-1 block text-xs font-semibold text-fg-2">{stageInfo(entry.stage).label} · {stageInfo(entry.stage).model}</span>}
           <span className="whitespace-pre-wrap">{entry.text}</span>
         </li>
       );
     case 'text':
-      return <li className="mr-8 rounded-lg bg-app px-3 py-2"><ClaudeMarkdown text={entry.text} /></li>;
+      return <li className="mr-4 rounded-xl border border-line bg-surface px-3.5 py-2.5"><ClaudeMarkdown text={entry.text} /></li>;
     case 'tool':
-      return <li className="flex items-center gap-1.5 text-xs text-fg-3"><Wrench className="w-3 h-3" /> {TOOL_LABELS[entry.name] ?? entry.name}</li>;
+      return <li className="flex items-center gap-1.5 text-xs text-fg-3"><Wrench className="h-3 w-3" /> {TOOL_LABELS[entry.name] ?? entry.name}</li>;
     case 'status':
       return <li className={`text-xs ${entry.tone === 'ok' ? 'text-success' : entry.tone === 'warn' ? 'text-warning' : 'text-danger'}`}>{entry.text}</li>;
   }

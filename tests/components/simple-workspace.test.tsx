@@ -138,6 +138,22 @@ describe('simple workspace', () => {
     expect(screen.getByRole('radio', { name: /Plan/ })).toHaveAttribute('aria-checked', 'true');
   });
 
+  it('offers starter prompts that fill the prompt box', async () => {
+    render(<SimpleWorkspace />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove silences and filler words' }));
+    expect(screen.getByLabelText('Prompt')).toHaveValue('Remove silences and filler words');
+    expect(engine.runAgent).not.toHaveBeenCalled();
+  });
+
+  it('tracks the Get started steps from real project state', async () => {
+    render(<SimpleWorkspace />);
+    const steps = within(await screen.findByRole('region', { name: 'Get started' }));
+    // Main footage is imported; no styles on (mocks return none); nothing sent yet.
+    await waitFor(() => expect(steps.getByText('1 of 3 done')).toBeInTheDocument());
+    expect(steps.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+    expect(steps.getByText('(done)', { exact: false }).closest('p')).toHaveTextContent('Add main footage');
+  });
+
   it('shows a stopped run honestly instead of as done', async () => {
     engine.runAgent.mockResolvedValue({ ok: false, stopped: 'stopped by you', text: null });
     render(<SimpleWorkspace />);

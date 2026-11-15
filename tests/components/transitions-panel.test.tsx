@@ -26,8 +26,7 @@ describe('transitions panel', () => {
     render(<TransitionsPanel onNotice={vi.fn()} />);
     expect(await screen.findByLabelText('Active: Classic')).toBeChecked();
     expect(screen.getByLabelText('Active: Montage')).not.toBeChecked();
-    expect(screen.getByText('3 of 4 styles active')).toBeInTheDocument();
-    expect(screen.getByText('58 built in · free')).toBeInTheDocument();
+    expect(screen.getByText('3 of 4 styles on · free, built in')).toBeInTheDocument();
     expect(screen.getByText('e.g. Cinematic one, Cinematic two')).toBeInTheDocument();
   });
 
@@ -38,7 +37,13 @@ describe('transitions panel', () => {
     await waitFor(() => expect(screen.getByLabelText('Active: Montage')).toBeChecked());
     fireEvent.click(screen.getByLabelText('Active: Classic'));
     await waitFor(() => expect(engine.setTransitionStyleActive).toHaveBeenCalledWith('classic', false));
-    await waitFor(() => expect(screen.getByText('3 of 4 styles active')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('3 of 4 styles on · free, built in')).toBeInTheDocument());
+  });
+
+  it('reports how many styles are on to the workspace', async () => {
+    const onActiveCount = vi.fn();
+    render(<TransitionsPanel onNotice={vi.fn()} onActiveCount={onActiveCount} />);
+    await waitFor(() => expect(onActiveCount).toHaveBeenLastCalledWith(3));
   });
 
   it('reports a failed save instead of pretending it worked', async () => {

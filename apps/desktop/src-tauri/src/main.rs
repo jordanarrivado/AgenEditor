@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -605,7 +606,7 @@ fn cache_model_blocking(app: tauri::AppHandle, preset: String) -> Result<String,
         .args(["cache-model", &preset])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -614,18 +615,41 @@ fn cache_model_blocking(app: tauri::AppHandle, preset: String) -> Result<String,
     let mut child = command
         .spawn()
         .map_err(|e| format!("Could not start model download: {e}"))?;
+    // Drained on its own thread so download progress output can never fill the pipe and stall the engine.
+    let stderr = child.stderr.take().map(|mut pipe| {
+        thread::spawn(move || {
+            let mut text = String::new();
+            let _ = pipe.read_to_string(&mut text);
+            text
+        })
+    });
     for _ in 0..9000 {
         if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-            return if status.success() {
-                Ok(format!("{preset} model cached"))
-            } else {
-                Err("Model download failed; check connectivity and disk space".into())
-            };
+            if status.success() {
+                return Ok(format!("{preset} model cached"));
+            }
+            let output = stderr.and_then(|reader| reader.join().ok()).unwrap_or_default();
+            return Err(model_failure_message(&output));
         }
         thread::sleep(Duration::from_millis(100));
     }
     let _ = child.kill();
     Err("Model download timed out".into())
+}
+
+/// The engine ends a failed run with one `{"error": {"message": …}}` line on stderr; report that reason
+/// instead of guessing at connectivity.
+fn model_failure_message(stderr: &str) -> String {
+    let reason = stderr.lines().rev().find_map(|line| {
+        let value: Value = serde_json::from_str(line.trim()).ok()?;
+        Some(value.get("error")?.get("message")?.as_str()?.to_string())
+    });
+    match reason.as_deref() {
+        Some("speech model download failed") | None => {
+            "Speech model download failed; check connectivity and disk space".into()
+        }
+        Some(reason) => format!("Speech model could not be installed: {reason}"),
+    }
 }
 
 async fn blocking<T: Send + 'static>(
@@ -868,7 +892,26 @@ async fn cache_model(app: tauri::AppHandle, preset: String) -> Result<String, St
 
 #[cfg(test)]
 mod tests {
-    use super::generator_url;
+    use super::{generator_url, model_failure_message};
+
+    #[test]
+    fn model_install_failure_reports_the_engine_reason() {
+        let stderr = "UserWarning: symlinks unsupported\n{\"error\": {\"code\": \"TRANSCRIPTION_FAILED\", \"message\": \"install with uv sync --extra transcribe\", \"details\": {}}}\n";
+        assert_eq!(
+            model_failure_message(stderr),
+            "Speech model could not be installed: install with uv sync --extra transcribe"
+        );
+        for download in [
+            "",
+            "Traceback…",
+            "{\"error\": {\"message\": \"speech model download failed\"}}",
+        ] {
+            assert_eq!(
+                model_failure_message(download),
+                "Speech model download failed; check connectivity and disk space"
+            );
+        }
+    }
 
     #[test]
     fn only_chatgpt_and_flow_can_be_opened() {

@@ -184,8 +184,9 @@ def system_report(workspace: Path | None = None, probe_hw: bool = True) -> Syste
         except OSError:
             notes.append("workspace free space could not be read")
     try:
-        import faster_whisper  # noqa: F401
+        from ageneditor.transcription import _import_whisper_model
 
+        _import_whisper_model()  # the packaged engine has no PyAV
         transcribe = True
     except ImportError:
         transcribe = False

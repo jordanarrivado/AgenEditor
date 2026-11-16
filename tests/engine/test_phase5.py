@@ -429,6 +429,31 @@ def test_transcription_runs_without_pyav(
     assert not hasattr(sys.modules["av"], "open")  # the placeholder, not PyAV, satisfied the import
 
 
+def test_cache_model_and_capability_report_work_without_pyav(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The "Install speech model" button runs `cache-model` in the packaged engine, which has no PyAV."""
+    pytest.importorskip("faster_whisper")
+    from ageneditor.system import system_report
+    from ageneditor.transcription import _import_whisper_model
+
+    monkeypatch.setitem(sys.modules, "av", None)  # makes `import av` raise ImportError
+    for name in [m for m in sys.modules if m == "faster_whisper" or m.startswith("faster_whisper.")]:
+        monkeypatch.delitem(sys.modules, name)
+    assert system_report(None, probe_hw=False).transcribe_installed
+    loaded: list[tuple[str, bool]] = []
+
+    class FakeModel:  # stands in for the download; the import above it is the real one
+        def __init__(self, name: str, device: str, compute_type: str, local_files_only: bool) -> None:
+            loaded.append((name, local_files_only))
+
+    _import_whisper_model()
+    monkeypatch.setattr(sys.modules["faster_whisper"], "WhisperModel", FakeModel)
+    assert cli_main(["cache-model", "tiny"]) == 0
+    assert loaded == [("tiny", False)]
+    assert json.loads(capsys.readouterr().out) == {"model_preset": "tiny", "status": "cached"}
+
+
 def test_packaged_engine_starts_transcription_worker_through_its_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     """A frozen exe has no `python -m`; the worker must go through the hidden CLI command."""
     from ageneditor import cli, transcription

@@ -111,6 +111,23 @@ describe('simple workspace', () => {
     expect(assets.getByText(/AI-generated \(external\) · Google Flow/)).toBeInTheDocument();
   });
 
+  it('offers the speech model install only while the model is missing', async () => {
+    await openProject();
+    await screen.findByTestId('bucket-main');
+    await waitFor(() => expect(engine.speechModelStatus).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /Install speech model/ })).toBeNull();
+  });
+
+  it('installs the missing speech model and then stops offering it', async () => {
+    engine.speechModelStatus.mockResolvedValue({ tiny: false, base: false, small: false });
+    engine.cacheModel.mockResolvedValue('tiny model cached');
+    await openProject();
+    fireEvent.click(await screen.findByRole('button', { name: /Install speech model/ }));
+    expect(await screen.findByText('Speech model ready (tiny model cached).')).toBeInTheDocument();
+    expect(engine.cacheModel).toHaveBeenCalledWith('tiny');
+    expect(screen.queryByRole('button', { name: /Install speech model/ })).toBeNull();
+  });
+
   it('imports a multi-file drop into the box it landed on and reports per-file errors', async () => {
     engine.importDroppedFiles.mockResolvedValue([
       { file: 'one.mp4', asset: asset('a4', 'reference', 'one.mp4') },

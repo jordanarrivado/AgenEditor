@@ -116,6 +116,8 @@ export const SimpleWorkspace: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [modelState, setModelState] = useState<'idle' | 'installing'>('idle');
+  // Offered until the cache check says the model is there; a failed check keeps the offer visible.
+  const [speechInstalled, setSpeechInstalled] = useState(false);
   // Remove asks for a second click; `removing` is the asset being removed right now.
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -158,6 +160,7 @@ export const SimpleWorkspace: React.FC = () => {
   useEffect(() => {
     void refreshLibrary().catch((error) => setNotice(errorText(error)));
     void engine.connection().then(setConnection).catch((error) => setNotice(errorText(error)));
+    void engine.speechModelStatus().then((status) => setSpeechInstalled(status.tiny)).catch(() => undefined);
   }, [refreshLibrary]);
 
   useEffect(() => {
@@ -464,7 +467,7 @@ export const SimpleWorkspace: React.FC = () => {
 
   const installModel = () => {
     setModelState('installing');
-    void engine.cacheModel('tiny').then((message) => setNotice(`Speech model ready (${message}).`))
+    void engine.cacheModel('tiny').then((message) => { setSpeechInstalled(true); setNotice(`Speech model ready (${message}).`); })
       .catch((error) => setNotice(errorText(error))).finally(() => setModelState('idle'));
   };
 
@@ -586,7 +589,7 @@ export const SimpleWorkspace: React.FC = () => {
                         ))}
                       </ul>
                     )}
-                    {bucket.id === 'main' && (
+                    {bucket.id === 'main' && !speechInstalled && (
                       <button type="button" className="flex items-start gap-1.5 text-left text-xs font-medium leading-snug text-accent hover:underline disabled:opacity-40 [&>svg]:mt-px [&>svg]:shrink-0" disabled={modelState === 'installing'} onClick={installModel}>
                         {modelState === 'installing' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mic className="h-3.5 w-3.5" />}
                         {modelState === 'installing' ? 'Installing speech model…' : 'Install speech model · one-time, for footage with talking'}

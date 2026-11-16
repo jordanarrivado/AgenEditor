@@ -52,8 +52,10 @@ def _service(args: argparse.Namespace) -> int:
 
 def _cache_model(args: argparse.Namespace) -> int:
     """Explicitly download a speech model; MCP transcription never initiates a download."""
+    from ageneditor.transcription import _import_whisper_model
+
     try:
-        from faster_whisper import WhisperModel
+        WhisperModel = _import_whisper_model()  # the packaged engine has no PyAV
     except ImportError as exc:
         raise EngineException(
             ErrorCode.TRANSCRIPTION_FAILED, "install with uv sync --extra transcribe"

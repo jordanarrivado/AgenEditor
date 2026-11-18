@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "EvidenceCitation": {
+      "additionalProperties": false,
+      "properties": {
+        "first_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "First Word Id",
+          "type": "string"
+        },
+        "last_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Last Word Id",
+          "type": "string"
+        },
+        "rationale": {
+          "default": "",
+          "maxLength": 1000,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "transcript_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Transcript Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transcript_id",
+        "first_word_id",
+        "last_word_id"
+      ],
+      "title": "EvidenceCitation",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/candidate_proposal.v1.json",
+  "additionalProperties": false,
+  "description": "What a discovery agent may submit: word citations only. The engine derives times and text.",
+  "properties": {
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/EvidenceCitation"
+      },
+      "maxItems": 5,
+      "minItems": 1,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "hook": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Hook"
+    },
+    "rationale": {
+      "maxLength": 1000,
+      "minLength": 10,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "relevance": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Relevance"
+    },
+    "topic": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Topic",
+      "type": "string"
+    },
+    "visual_potential": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Visual Potential"
+    }
+  },
+  "required": [
+    "topic",
+    "rationale",
+    "evidence"
+  ],
+  "title": "CandidateProposal",
+  "type": "object"
+}

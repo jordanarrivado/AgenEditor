@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "CostKind": {
+      "enum": [
+        "measured",
+        "provider_reported",
+        "estimated",
+        "unknown"
+      ],
+      "title": "CostKind",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/model_usage.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "cost_kind": {
+      "$ref": "#/$defs/CostKind"
+    },
+    "cost_micros": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cost Micros"
+    },
+    "model": {
+      "maxLength": 100,
+      "title": "Model",
+      "type": "string"
+    },
+    "provider_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Provider Id",
+      "type": "string"
+    },
+    "tokens_in": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tokens In"
+    },
+    "tokens_out": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tokens Out"
+    }
+  },
+  "required": [
+    "provider_id",
+    "model",
+    "cost_kind"
+  ],
+  "title": "ModelUsage",
+  "type": "object"
+}

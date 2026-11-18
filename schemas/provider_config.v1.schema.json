@@ -1,0 +1,176 @@
+{
+  "$defs": {
+    "ProviderModel": {
+      "additionalProperties": false,
+      "properties": {
+        "estimated_run_micros": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Estimated Run Micros",
+          "type": "integer"
+        },
+        "input_micros_per_mtok": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Micros Per Mtok"
+        },
+        "max_output_tokens": {
+          "default": 4096,
+          "maximum": 64000,
+          "minimum": 256,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "model": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,99}$",
+          "title": "Model",
+          "type": "string"
+        },
+        "output_micros_per_mtok": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Micros Per Mtok"
+        },
+        "quality": {
+          "default": 50,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Quality",
+          "type": "integer"
+        },
+        "task_types": {
+          "items": {
+            "$ref": "#/$defs/TaskType"
+          },
+          "title": "Task Types",
+          "type": "array"
+        }
+      },
+      "required": [
+        "model",
+        "task_types"
+      ],
+      "title": "ProviderModel",
+      "type": "object"
+    },
+    "TaskType": {
+      "description": "Smallest schedulable unit types (spec \u00a77). Batch-level tasks have no clip.",
+      "enum": [
+        "analyze_source",
+        "discover_clips",
+        "plan_clip",
+        "structural_edit",
+        "captions",
+        "visual_polish",
+        "audio_polish",
+        "enhancement",
+        "assemble_draft",
+        "render_preview",
+        "technical_qa",
+        "editorial_qa",
+        "revision",
+        "export"
+      ],
+      "title": "TaskType",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/provider_config.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "adapter_type": {
+      "enum": [
+        "claude_code",
+        "anthropic_api"
+      ],
+      "title": "Adapter Type",
+      "type": "string"
+    },
+    "api_key_env": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Api Key Env"
+    },
+    "enabled": {
+      "default": false,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "label": {
+      "maxLength": 80,
+      "title": "Label",
+      "type": "string"
+    },
+    "max_concurrency": {
+      "default": 1,
+      "maximum": 8,
+      "minimum": 1,
+      "title": "Max Concurrency",
+      "type": "integer"
+    },
+    "models": {
+      "items": {
+        "$ref": "#/$defs/ProviderModel"
+      },
+      "maxItems": 10,
+      "minItems": 1,
+      "title": "Models",
+      "type": "array"
+    },
+    "requests_per_minute": {
+      "default": 20,
+      "maximum": 1000,
+      "minimum": 1,
+      "title": "Requests Per Minute",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sends_data_off_device": {
+      "default": true,
+      "title": "Sends Data Off Device",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "adapter_type",
+    "label",
+    "models"
+  ],
+  "title": "ProviderConfig",
+  "type": "object"
+}

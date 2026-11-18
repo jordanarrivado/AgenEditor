@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "BlockReason": {
+      "enum": [
+        "dependencies",
+        "waiting_for_assets",
+        "waiting_for_team",
+        "waiting_for_approval",
+        "budget",
+        "no_capable_worker",
+        "paused",
+        "policy",
+        "rate_limited"
+      ],
+      "title": "BlockReason",
+      "type": "string"
+    },
+    "RouteKind": {
+      "enum": [
+        "engine",
+        "provider",
+        "unavailable"
+      ],
+      "title": "RouteKind",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/model_routing_decision.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "block_reason": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BlockReason"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "estimated_cost_micros": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Estimated Cost Micros",
+      "type": "integer"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "provider_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Id"
+    },
+    "reasons": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Reasons",
+      "type": "array"
+    },
+    "rejected": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 40,
+      "title": "Rejected",
+      "type": "array"
+    },
+    "route": {
+      "$ref": "#/$defs/RouteKind"
+    },
+    "task_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Task Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "route"
+  ],
+  "title": "ModelRoutingDecision",
+  "type": "object"
+}

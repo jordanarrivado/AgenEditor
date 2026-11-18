@@ -1,0 +1,152 @@
+{
+  "$defs": {
+    "QAReviewStatus": {
+      "enum": [
+        "queued",
+        "in_review",
+        "completed",
+        "superseded"
+      ],
+      "title": "QAReviewStatus",
+      "type": "string"
+    },
+    "QAVerdict": {
+      "enum": [
+        "pass",
+        "needs_revision"
+      ],
+      "title": "QAVerdict",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/qa_review.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "clip_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Clip Id",
+      "type": "string"
+    },
+    "completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "evidence_basis": {
+      "items": {
+        "enum": [
+          "timeline",
+          "transcript",
+          "technical_qa",
+          "plan",
+          "frames",
+          "brief"
+        ],
+        "type": "string"
+      },
+      "title": "Evidence Basis",
+      "type": "array"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "render_artifact_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Render Artifact Id",
+      "type": "string"
+    },
+    "render_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Render Sha256",
+      "type": "string"
+    },
+    "reviewer": {
+      "maxLength": 100,
+      "title": "Reviewer",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "$ref": "#/$defs/QAReviewStatus",
+      "default": "queued"
+    },
+    "summary": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Summary",
+      "type": "string"
+    },
+    "task_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Task Id"
+    },
+    "technical_report_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Technical Report Id"
+    },
+    "timeline_revision": {
+      "minimum": 0,
+      "title": "Timeline Revision",
+      "type": "integer"
+    },
+    "verdict": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/QAVerdict"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "id",
+    "clip_id",
+    "timeline_revision",
+    "render_artifact_id",
+    "render_sha256",
+    "reviewer"
+  ],
+  "title": "QAReview",
+  "type": "object"
+}

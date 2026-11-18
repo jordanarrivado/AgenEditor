@@ -1,0 +1,119 @@
+{
+  "$defs": {
+    "EvidenceCitation": {
+      "additionalProperties": false,
+      "properties": {
+        "first_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "First Word Id",
+          "type": "string"
+        },
+        "last_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Last Word Id",
+          "type": "string"
+        },
+        "rationale": {
+          "default": "",
+          "maxLength": 1000,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "transcript_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Transcript Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transcript_id",
+        "first_word_id",
+        "last_word_id"
+      ],
+      "title": "EvidenceCitation",
+      "type": "object"
+    },
+    "PassKind": {
+      "enum": [
+        "structural",
+        "captions",
+        "visual",
+        "audio",
+        "broll",
+        "music",
+        "sfx",
+        "transitions"
+      ],
+      "title": "PassKind",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/clip_plan_draft.v1.json",
+  "additionalProperties": false,
+  "description": "What a planning agent may submit. The engine resolves citations to frames and validates it.",
+  "properties": {
+    "allowed_exceptions": {
+      "items": {
+        "maxLength": 300,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Allowed Exceptions",
+      "type": "array"
+    },
+    "asset_request_ids": {
+      "items": {
+        "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Asset Request Ids",
+      "type": "array"
+    },
+    "conditional_passes": {
+      "items": {
+        "$ref": "#/$defs/PassKind"
+      },
+      "title": "Conditional Passes",
+      "type": "array"
+    },
+    "cuts": {
+      "items": {
+        "$ref": "#/$defs/EvidenceCitation"
+      },
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Cuts",
+      "type": "array"
+    },
+    "hook": {
+      "default": "",
+      "maxLength": 500,
+      "title": "Hook",
+      "type": "string"
+    },
+    "narrative_goal": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Narrative Goal",
+      "type": "string"
+    },
+    "qa_criteria": {
+      "items": {
+        "maxLength": 300,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Qa Criteria",
+      "type": "array"
+    }
+  },
+  "required": [
+    "narrative_goal",
+    "cuts"
+  ],
+  "title": "ClipPlanDraft",
+  "type": "object"
+}

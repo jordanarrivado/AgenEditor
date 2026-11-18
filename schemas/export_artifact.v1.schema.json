@@ -1,0 +1,89 @@
+{
+  "$id": "https://ageneditor.local/schemas/export_artifact.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "approval_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Approval Id",
+      "type": "string"
+    },
+    "captions_path": {
+      "anyOf": [
+        {
+          "maxLength": 400,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Captions Path"
+    },
+    "captions_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Captions Sha256"
+    },
+    "clip_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Clip Id",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "qa_report_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Qa Report Id",
+      "type": "string"
+    },
+    "timeline_revision": {
+      "minimum": 0,
+      "title": "Timeline Revision",
+      "type": "integer"
+    },
+    "verified_at": {
+      "format": "date-time",
+      "title": "Verified At",
+      "type": "string"
+    },
+    "video_artifact_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Video Artifact Id",
+      "type": "string"
+    },
+    "video_path": {
+      "maxLength": 400,
+      "title": "Video Path",
+      "type": "string"
+    },
+    "video_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Video Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "clip_id",
+    "approval_id",
+    "timeline_revision",
+    "video_artifact_id",
+    "video_path",
+    "video_sha256",
+    "qa_report_id"
+  ],
+  "title": "ExportArtifact",
+  "type": "object"
+}

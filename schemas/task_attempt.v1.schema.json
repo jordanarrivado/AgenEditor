@@ -1,0 +1,189 @@
+{
+  "$defs": {
+    "AttemptState": {
+      "enum": [
+        "leased",
+        "running",
+        "succeeded",
+        "failed",
+        "expired",
+        "abandoned",
+        "cancelled"
+      ],
+      "title": "AttemptState",
+      "type": "string"
+    },
+    "EngineError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "details": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "maxLength": 2000,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "EngineError",
+      "type": "object"
+    },
+    "ErrorCode": {
+      "description": "Structured error codes returned by engine services and MCP tools (spec \u00a76).",
+      "enum": [
+        "ASSET_NOT_FOUND",
+        "RANGE_OUT_OF_BOUNDS",
+        "REVISION_CONFLICT",
+        "SOURCE_CHANGED",
+        "UNSUPPORTED_CODEC",
+        "RENDER_FAILED",
+        "QA_FAILED",
+        "PERMISSION_DENIED",
+        "INVALID_TIMELINE",
+        "PROBE_FAILED",
+        "PROJECT_NOT_FOUND",
+        "JOB_NOT_FOUND",
+        "JOB_CANCELED",
+        "INVALID_ARGUMENT",
+        "TRANSCRIPTION_FAILED",
+        "TRANSCRIPT_NOT_FOUND",
+        "SOURCE_INSUFFICIENT",
+        "PLAN_RETRY_LIMIT",
+        "OUT_OF_CONTEXT",
+        "INSUFFICIENT_DISK",
+        "DOWNLOAD_FAILED",
+        "LEASE_EXPIRED",
+        "STALE_FENCE",
+        "RATE_LIMITED",
+        "PROVIDER_UNAVAILABLE",
+        "BUDGET_EXCEEDED",
+        "NO_CAPABLE_WORKER",
+        "TASK_TIMEOUT",
+        "ADAPTER_FAILED",
+        "INVALID_STATE_TRANSITION",
+        "APPROVAL_REQUIRED",
+        "DELIVERY_FAILED",
+        "HUMAN_DECISION_REQUIRED"
+      ],
+      "title": "ErrorCode",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/task_attempt.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "adapter": {
+      "maxLength": 40,
+      "title": "Adapter",
+      "type": "string"
+    },
+    "ended_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ended At"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EngineError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "fencing_token": {
+      "minimum": 1,
+      "title": "Fencing Token",
+      "type": "integer"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "lease_expires_at": {
+      "format": "date-time",
+      "title": "Lease Expires At",
+      "type": "string"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "maxLength": 100,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/AttemptState",
+      "default": "leased"
+    },
+    "task_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Task Id",
+      "type": "string"
+    },
+    "worker_id": {
+      "maxLength": 100,
+      "title": "Worker Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "task_id",
+    "worker_id",
+    "adapter",
+    "fencing_token",
+    "lease_expires_at"
+  ],
+  "title": "TaskAttempt",
+  "type": "object"
+}

@@ -1,0 +1,304 @@
+{
+  "$defs": {
+    "CaptionPreset": {
+      "description": "Enumerated burn-in styles (two lines max, phone-safe margins). Never free-form ASS/filters.",
+      "enum": [
+        "clean_white",
+        "bold_yellow",
+        "boxed"
+      ],
+      "title": "CaptionPreset",
+      "type": "string"
+    },
+    "ColorPreset": {
+      "description": "Fixed, gentle grade presets applied after compositing. ``none`` leaves pixels untouched.",
+      "enum": [
+        "none",
+        "natural",
+        "warm",
+        "cool"
+      ],
+      "title": "ColorPreset",
+      "type": "string"
+    },
+    "CreativeDefaults": {
+      "additionalProperties": false,
+      "description": "Overridable creative defaults. ``None`` means \"inherit from the layer above\".",
+      "properties": {
+        "caption_preset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaptionPreset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "captions": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Captions"
+        },
+        "color_preset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ColorPreset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "normalize_audio": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalize Audio"
+        },
+        "pacing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pacing"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "platform": {
+          "anyOf": [
+            {
+              "maxLength": 60,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Platform"
+        },
+        "tone": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tone"
+        }
+      },
+      "title": "CreativeDefaults",
+      "type": "object"
+    },
+    "DeliveryRules": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_partial_delivery": {
+          "default": true,
+          "title": "Allow Partial Delivery",
+          "type": "boolean"
+        },
+        "include_captions": {
+          "default": true,
+          "title": "Include Captions",
+          "type": "boolean"
+        },
+        "include_project_snapshot": {
+          "default": true,
+          "title": "Include Project Snapshot",
+          "type": "boolean"
+        },
+        "naming_prefix": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_\\-]{0,59}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Naming Prefix"
+        }
+      },
+      "title": "DeliveryRules",
+      "type": "object"
+    },
+    "Pacing": {
+      "enum": [
+        "calm",
+        "balanced",
+        "fast"
+      ],
+      "title": "Pacing",
+      "type": "string"
+    },
+    "ProfileScope": {
+      "enum": [
+        "global",
+        "client"
+      ],
+      "title": "ProfileScope",
+      "type": "string"
+    },
+    "StyleObservation": {
+      "additionalProperties": false,
+      "description": "Reference intelligence. ``measured`` values came from FFprobe/FFmpeg; ``estimate`` did not.",
+      "properties": {
+        "basis": {
+          "enum": [
+            "measured",
+            "estimate",
+            "person"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "source_asset_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Asset Id"
+        },
+        "value": {
+          "maxLength": 300,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "value",
+        "basis"
+      ],
+      "title": "StyleObservation",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/instruction_profile.v1.json",
+  "additionalProperties": false,
+  "description": "A versioned instruction layer (global defaults or one client's profile).",
+  "properties": {
+    "client_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Client Id"
+    },
+    "creative": {
+      "$ref": "#/$defs/CreativeDefaults"
+    },
+    "delivery": {
+      "$ref": "#/$defs/DeliveryRules"
+    },
+    "instructions": {
+      "default": "",
+      "maxLength": 20000,
+      "title": "Instructions",
+      "type": "string"
+    },
+    "locked_creative": {
+      "items": {
+        "enum": [
+          "caption_preset",
+          "color_preset",
+          "captions",
+          "normalize_audio",
+          "pacing",
+          "tone",
+          "platform"
+        ],
+        "type": "string"
+      },
+      "title": "Locked Creative",
+      "type": "array"
+    },
+    "required_constraints": {
+      "items": {
+        "maxLength": 300,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 50,
+      "title": "Required Constraints",
+      "type": "array"
+    },
+    "revision": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "scope": {
+      "$ref": "#/$defs/ProfileScope"
+    },
+    "style_observations": {
+      "items": {
+        "$ref": "#/$defs/StyleObservation"
+      },
+      "maxItems": 50,
+      "title": "Style Observations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "scope"
+  ],
+  "title": "InstructionProfile",
+  "type": "object"
+}

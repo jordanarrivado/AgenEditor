@@ -1,0 +1,88 @@
+{
+  "$defs": {
+    "GraphNode": {
+      "additionalProperties": false,
+      "properties": {
+        "depends_on": {
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Depends On",
+          "type": "array"
+        },
+        "key": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "type": {
+          "$ref": "#/$defs/TaskType"
+        }
+      },
+      "required": [
+        "key",
+        "type"
+      ],
+      "title": "GraphNode",
+      "type": "object"
+    },
+    "TaskType": {
+      "description": "Smallest schedulable unit types (spec \u00a77). Batch-level tasks have no clip.",
+      "enum": [
+        "analyze_source",
+        "discover_clips",
+        "plan_clip",
+        "structural_edit",
+        "captions",
+        "visual_polish",
+        "audio_polish",
+        "enhancement",
+        "assemble_draft",
+        "render_preview",
+        "technical_qa",
+        "editorial_qa",
+        "revision",
+        "export"
+      ],
+      "title": "TaskType",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/clip_task_graph.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "clip_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Clip Id",
+      "type": "string"
+    },
+    "cycle": {
+      "minimum": 0,
+      "title": "Cycle",
+      "type": "integer"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/GraphNode"
+      },
+      "maxItems": 40,
+      "minItems": 1,
+      "title": "Nodes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "clip_id",
+    "cycle",
+    "nodes"
+  ],
+  "title": "ClipTaskGraph",
+  "type": "object"
+}

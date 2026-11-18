@@ -92,7 +92,7 @@ def service_request(workspace: Path, endpoint: str, payload: dict[str, Any]) -> 
     address = service_address(workspace)
     if address is None:
         raise EngineException(ErrorCode.PROJECT_NOT_FOUND, "shared desktop engine service is not running")
-    if endpoint not in {"/call", "/desktop"}:
+    if endpoint not in {"/call", "/desktop", "/scoped"}:
         raise EngineException(ErrorCode.INVALID_ARGUMENT, "unknown service endpoint")
     url, token = address
     port = int(url.rsplit(":", 1)[1])
@@ -165,6 +165,29 @@ class DesktopService:
         self.mcp = build_server(self.workspace, shared_service=False)
         self.token = secrets.token_hex(32)
         self.http = LocalHTTPServer(("127.0.0.1", 0), self._handler())
+        self._orchestrator: Any = None
+
+    @property
+    def orchestrator(self) -> Any:
+        """AgenEditor 2.0 production orchestrator, created on first use (legacy workspaces pay nothing)."""
+        if self._orchestrator is None:
+            from ageneditor.orchestration.host_adapters import AnthropicMessagesAdapter, ClaudeCodeHostAdapter
+            from ageneditor.orchestration.orchestrator import ProductionOrchestrator
+            from ageneditor.production.workspace import WorkspaceRegistry
+
+            registry = WorkspaceRegistry(self.workspace)
+            api = next(p for p in registry.providers() if p.adapter_type == "anthropic_api")
+            prices = {
+                m.model: (m.input_micros_per_mtok, m.output_micros_per_mtok)
+                for m in api.models
+                if m.input_micros_per_mtok is not None and m.output_micros_per_mtok is not None
+            }
+            self._orchestrator = ProductionOrchestrator(
+                self.workspace,
+                registry,
+                adapters=[ClaudeCodeHostAdapter(self.workspace), AnthropicMessagesAdapter(prices=prices)],
+            )
+        return self._orchestrator
         self.http.timeout = 0.5
 
     @property
@@ -205,6 +228,12 @@ class DesktopService:
             store = ProjectStore.create(self.workspace, name)
             store.create_timeline(profile, target)
             return {"project_id": store.project_id, "name": name, "current_revision": 0}
+        if operation.startswith("production_"):
+            from ageneditor.production.desktop_ops import PRODUCTION_OPERATIONS, production_call
+
+            if operation not in PRODUCTION_OPERATIONS:
+                raise EngineException(ErrorCode.INVALID_ARGUMENT, "unknown desktop operation")
+            return production_call(self.orchestrator, operation, args)
         if operation.endswith("sound_pack") or operation in {"list_sound_packs", "list_sound_catalog"}:
             return self._sound_library_call(operation, args)
         if operation == "speech_model_status":
@@ -435,6 +464,12 @@ class DesktopService:
                             owner.mcp.call_tool(str(payload["tool"]), payload.get("args", {}))
                         )
                         self._write(200, result.model_dump(mode="json", by_alias=True))
+                    elif self.path == "/scoped":
+                        # Production agents: every call is checked against its per-attempt task token.
+                        result = owner.orchestrator.tools.call(
+                            str(payload["tool"]), dict(payload.get("args", {})), str(payload["task_token"])
+                        )
+                        self._write(200, {"result": result})
                     elif self.path == "/desktop":
                         self._write(
                             200,
@@ -470,9 +505,11 @@ class DesktopService:
             temporary.write_text(json.dumps({"port": self.port, "token": self.token}), encoding="utf-8")
             make_private(temporary)
             temporary.replace(path)
+            self.orchestrator.start()
             try:
                 self.http.serve_forever(poll_interval=0.2)
             finally:
+                self.orchestrator.stop()
                 self.http.server_close()
                 try:
                     data = json.loads(path.read_text(encoding="utf-8"))

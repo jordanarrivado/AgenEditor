@@ -14,6 +14,8 @@ dependencies = [
 
 [project.optional-dependencies]
 transcribe = ["faster-whisper>=1.2.1,<2", "av>=11,<19"]
+#: Optional Anthropic API worker for AgenEditor 2.0 production (discovery and editorial QA only).
+ai = ["anthropic>=1,<2"]
 
 [project.scripts]
 ageneditor = "ageneditor.cli:main"

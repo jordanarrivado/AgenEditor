@@ -1,0 +1,48 @@
+{
+  "$defs": {
+    "ClientStatus": {
+      "enum": [
+        "active",
+        "archived"
+      ],
+      "title": "ClientStatus",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/client.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "$ref": "#/$defs/ClientStatus",
+      "default": "active"
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "Client",
+  "type": "object"
+}

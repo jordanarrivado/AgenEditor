@@ -1,0 +1,359 @@
+{
+  "$defs": {
+    "CaptionPreset": {
+      "description": "Enumerated burn-in styles (two lines max, phone-safe margins). Never free-form ASS/filters.",
+      "enum": [
+        "clean_white",
+        "bold_yellow",
+        "boxed"
+      ],
+      "title": "CaptionPreset",
+      "type": "string"
+    },
+    "ColorPreset": {
+      "description": "Fixed, gentle grade presets applied after compositing. ``none`` leaves pixels untouched.",
+      "enum": [
+        "none",
+        "natural",
+        "warm",
+        "cool"
+      ],
+      "title": "ColorPreset",
+      "type": "string"
+    },
+    "ContextConflict": {
+      "additionalProperties": false,
+      "description": "Two layers disagree on something a lower layer may not decide; escalated, never auto-resolved.",
+      "properties": {
+        "field": {
+          "maxLength": 100,
+          "title": "Field",
+          "type": "string"
+        },
+        "layers": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Layers",
+          "type": "array"
+        },
+        "message": {
+          "maxLength": 500,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "message"
+      ],
+      "title": "ContextConflict",
+      "type": "object"
+    },
+    "ContextLayer": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 0,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "scope": {
+          "enum": [
+            "engine",
+            "global",
+            "client",
+            "project",
+            "batch",
+            "clip"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 100,
+          "title": "Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "source_id",
+        "revision",
+        "content_hash"
+      ],
+      "title": "ContextLayer",
+      "type": "object"
+    },
+    "DeliveryRules": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_partial_delivery": {
+          "default": true,
+          "title": "Allow Partial Delivery",
+          "type": "boolean"
+        },
+        "include_captions": {
+          "default": true,
+          "title": "Include Captions",
+          "type": "boolean"
+        },
+        "include_project_snapshot": {
+          "default": true,
+          "title": "Include Project Snapshot",
+          "type": "boolean"
+        },
+        "naming_prefix": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_\\-]{0,59}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Naming Prefix"
+        }
+      },
+      "title": "DeliveryRules",
+      "type": "object"
+    },
+    "Pacing": {
+      "enum": [
+        "calm",
+        "balanced",
+        "fast"
+      ],
+      "title": "Pacing",
+      "type": "string"
+    },
+    "ResolvedCreative": {
+      "additionalProperties": false,
+      "description": "Creative settings after every layer was applied; nothing is left to inherit.",
+      "properties": {
+        "caption_preset": {
+          "$ref": "#/$defs/CaptionPreset",
+          "default": "clean_white"
+        },
+        "captions": {
+          "default": true,
+          "title": "Captions",
+          "type": "boolean"
+        },
+        "color_preset": {
+          "$ref": "#/$defs/ColorPreset",
+          "default": "none"
+        },
+        "normalize_audio": {
+          "default": true,
+          "title": "Normalize Audio",
+          "type": "boolean"
+        },
+        "pacing": {
+          "$ref": "#/$defs/Pacing",
+          "default": "balanced"
+        },
+        "platform": {
+          "default": "",
+          "maxLength": 60,
+          "title": "Platform",
+          "type": "string"
+        },
+        "tone": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Tone",
+          "type": "string"
+        }
+      },
+      "title": "ResolvedCreative",
+      "type": "object"
+    },
+    "StyleObservation": {
+      "additionalProperties": false,
+      "description": "Reference intelligence. ``measured`` values came from FFprobe/FFmpeg; ``estimate`` did not.",
+      "properties": {
+        "basis": {
+          "enum": [
+            "measured",
+            "estimate",
+            "person"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "source_asset_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Asset Id"
+        },
+        "value": {
+          "maxLength": 300,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "value",
+        "basis"
+      ],
+      "title": "StyleObservation",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/context_snapshot.v1.json",
+  "additionalProperties": false,
+  "description": "Immutable, content-addressed instruction/policy context a task ran with (spec \u00a710).",
+  "properties": {
+    "client_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Client Id"
+    },
+    "conflicts": {
+      "items": {
+        "$ref": "#/$defs/ContextConflict"
+      },
+      "title": "Conflicts",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "creative": {
+      "$ref": "#/$defs/ResolvedCreative"
+    },
+    "delivery": {
+      "$ref": "#/$defs/DeliveryRules"
+    },
+    "engine_invariants": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Engine Invariants",
+      "type": "array"
+    },
+    "hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Hash",
+      "type": "string"
+    },
+    "instructions": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "maxItems": 6,
+      "title": "Instructions",
+      "type": "array"
+    },
+    "layers": {
+      "items": {
+        "$ref": "#/$defs/ContextLayer"
+      },
+      "title": "Layers",
+      "type": "array"
+    },
+    "policy_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Policy Hash",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "required_constraints": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 60,
+      "title": "Required Constraints",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_asset_hashes": {
+      "patternProperties": {
+        "^[a-z0-9][a-z0-9_\\-]{0,63}$": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "title": "Source Asset Hashes",
+      "type": "object"
+    },
+    "style_observations": {
+      "items": {
+        "$ref": "#/$defs/StyleObservation"
+      },
+      "maxItems": 50,
+      "title": "Style Observations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "hash",
+    "project_id",
+    "layers",
+    "creative",
+    "engine_invariants",
+    "delivery",
+    "policy_hash"
+  ],
+  "title": "ContextSnapshot",
+  "type": "object"
+}

@@ -42,6 +42,7 @@ from ageneditor.contracts.common import ProjectRelativePath
 from ageneditor.media.hashing import sha256_file
 from ageneditor.media.probe import probe
 from ageneditor.media.ranges import source_interval
+from ageneditor.production.schema import PROJECT_DDL
 from ageneditor.timebase import seconds_to_frames_round
 
 
@@ -161,6 +162,8 @@ class ProjectStore:
                     result_json TEXT NOT NULL, created_at TEXT NOT NULL
                 );
             """)
+            # AgenEditor 2.0 production tables: additive only, so legacy projects stay readable.
+            db.executescript(PROJECT_DDL)
 
     @property
     def project_id(self) -> str:
@@ -356,6 +359,18 @@ class ProjectStore:
                         f"this file is used in the current edit (revision {revision}); "
                         "ask Claude to take it out first",
                     )
+            latest_clip_timelines = db.execute(
+                "SELECT t.data FROM clip_timelines t JOIN (SELECT clip_id, max(revision) AS r "
+                "FROM clip_timelines GROUP BY clip_id) m ON t.clip_id = m.clip_id AND t.revision = m.r"
+            ).fetchall()
+            for clip_row in latest_clip_timelines:
+                data = json.loads(clip_row[0])
+                if asset_id in {clip["asset_id"] for clip in data.get("clips", [])} | {
+                    cue["source_asset_id"] for cue in data.get("captions", [])
+                }:
+                    raise EngineException(
+                        ErrorCode.PERMISSION_DENIED, "this file is used in a production clip's current edit"
+                    )
             if asset_id in self._checklist_in(db).links.values():
                 raise EngineException(
                     ErrorCode.PERMISSION_DENIED, "this file is linked to an asset request; unlink it first"
@@ -365,7 +380,9 @@ class ProjectStore:
     def _assets_cited_by_revisions(self) -> set[str]:
         """Every asset any stored revision's clips or captions cite."""
         with self._connect() as db:
-            rows = db.execute("SELECT data FROM timelines").fetchall()
+            rows = db.execute(
+                "SELECT data FROM timelines UNION ALL SELECT data FROM clip_timelines"
+            ).fetchall()
         cited: set[str] = set()
         for row in rows:
             data = json.loads(row[0])

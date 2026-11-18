@@ -1,0 +1,594 @@
+{
+  "$defs": {
+    "BatchPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "ai_task_types": {
+          "items": {
+            "$ref": "#/$defs/TaskType"
+          },
+          "maxItems": 20,
+          "title": "Ai Task Types",
+          "type": "array"
+        },
+        "allow_data_egress": {
+          "default": false,
+          "title": "Allow Data Egress",
+          "type": "boolean"
+        },
+        "allow_partial_delivery": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allow Partial Delivery"
+        },
+        "allowed_providers": {
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Allowed Providers",
+          "type": "array"
+        },
+        "audience": {
+          "default": "",
+          "maxLength": 300,
+          "title": "Audience",
+          "type": "string"
+        },
+        "budget_micros": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Budget Micros"
+        },
+        "creative": {
+          "$ref": "#/$defs/CreativeDefaults"
+        },
+        "deadline": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline"
+        },
+        "editorial_qa": {
+          "default": "required",
+          "enum": [
+            "required",
+            "skip"
+          ],
+          "title": "Editorial Qa",
+          "type": "string"
+        },
+        "exclusions": {
+          "items": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "max_duration_us": {
+          "default": 60000000,
+          "maximum": 600000000,
+          "minimum": 1000000,
+          "title": "Max Duration Us",
+          "type": "integer"
+        },
+        "max_parallel_teams": {
+          "anyOf": [
+            {
+              "maximum": 8,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Parallel Teams"
+        },
+        "max_revision_attempts_per_finding": {
+          "default": 2,
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Max Revision Attempts Per Finding",
+          "type": "integer"
+        },
+        "min_duration_us": {
+          "default": 20000000,
+          "maximum": 600000000,
+          "minimum": 1000000,
+          "title": "Min Duration Us",
+          "type": "integer"
+        },
+        "model_pins": {
+          "additionalProperties": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/TaskType"
+          },
+          "title": "Model Pins",
+          "type": "object"
+        },
+        "output_profile": {
+          "$ref": "#/$defs/RenderProfile",
+          "default": {
+            "audio_channels": 2,
+            "audio_codec": "aac",
+            "audio_sample_rate": 48000,
+            "container": "mp4",
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "height": 1920,
+            "id": "reel_1080x1920_30",
+            "loudness_lufs": -16.0,
+            "pixel_format": "yuv420p",
+            "preset": "balanced",
+            "schema_version": 1,
+            "true_peak_dbtp": -1.0,
+            "video_codec": "h264",
+            "width": 1080
+          }
+        },
+        "platform": {
+          "default": "",
+          "maxLength": 60,
+          "title": "Platform",
+          "type": "string"
+        },
+        "priority": {
+          "default": 50,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "selection": {
+          "$ref": "#/$defs/SelectionMode",
+          "default": "human"
+        },
+        "source_asset_ids": {
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Source Asset Ids",
+          "type": "array"
+        },
+        "target_count": {
+          "anyOf": [
+            {
+              "maximum": 50,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Count"
+        },
+        "target_mode": {
+          "$ref": "#/$defs/BatchTargetMode",
+          "default": "auto"
+        }
+      },
+      "title": "BatchPolicy",
+      "type": "object"
+    },
+    "BatchStatus": {
+      "enum": [
+        "created",
+        "discovering",
+        "awaiting_selection",
+        "producing",
+        "completed",
+        "cancelled"
+      ],
+      "title": "BatchStatus",
+      "type": "string"
+    },
+    "BatchTargetMode": {
+      "enum": [
+        "auto",
+        "count"
+      ],
+      "title": "BatchTargetMode",
+      "type": "string"
+    },
+    "CaptionPreset": {
+      "description": "Enumerated burn-in styles (two lines max, phone-safe margins). Never free-form ASS/filters.",
+      "enum": [
+        "clean_white",
+        "bold_yellow",
+        "boxed"
+      ],
+      "title": "CaptionPreset",
+      "type": "string"
+    },
+    "ColorPreset": {
+      "description": "Fixed, gentle grade presets applied after compositing. ``none`` leaves pixels untouched.",
+      "enum": [
+        "none",
+        "natural",
+        "warm",
+        "cool"
+      ],
+      "title": "ColorPreset",
+      "type": "string"
+    },
+    "CreativeDefaults": {
+      "additionalProperties": false,
+      "description": "Overridable creative defaults. ``None`` means \"inherit from the layer above\".",
+      "properties": {
+        "caption_preset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaptionPreset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "captions": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Captions"
+        },
+        "color_preset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ColorPreset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "normalize_audio": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalize Audio"
+        },
+        "pacing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pacing"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "platform": {
+          "anyOf": [
+            {
+              "maxLength": 60,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Platform"
+        },
+        "tone": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tone"
+        }
+      },
+      "title": "CreativeDefaults",
+      "type": "object"
+    },
+    "EncoderPreset": {
+      "enum": [
+        "fast",
+        "balanced",
+        "quality"
+      ],
+      "title": "EncoderPreset",
+      "type": "string"
+    },
+    "FrameRate": {
+      "description": "Exact rational frame rate, e.g. 30/1 or 30000/1001.",
+      "properties": {
+        "den": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Den",
+          "type": "integer"
+        },
+        "num": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Num",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "num"
+      ],
+      "title": "FrameRate",
+      "type": "object"
+    },
+    "Pacing": {
+      "enum": [
+        "calm",
+        "balanced",
+        "fast"
+      ],
+      "title": "Pacing",
+      "type": "string"
+    },
+    "RenderProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "audio_channels": {
+          "default": 2,
+          "enum": [
+            1,
+            2
+          ],
+          "title": "Audio Channels",
+          "type": "integer"
+        },
+        "audio_codec": {
+          "const": "aac",
+          "default": "aac",
+          "title": "Audio Codec",
+          "type": "string"
+        },
+        "audio_sample_rate": {
+          "default": 48000,
+          "enum": [
+            44100,
+            48000
+          ],
+          "title": "Audio Sample Rate",
+          "type": "integer"
+        },
+        "container": {
+          "const": "mp4",
+          "default": "mp4",
+          "title": "Container",
+          "type": "string"
+        },
+        "frame_rate": {
+          "$ref": "#/$defs/FrameRate"
+        },
+        "height": {
+          "maximum": 7680,
+          "minimum": 16,
+          "title": "Height",
+          "type": "integer"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "loudness_lufs": {
+          "default": -16.0,
+          "maximum": -5,
+          "minimum": -40,
+          "title": "Loudness Lufs",
+          "type": "number"
+        },
+        "pixel_format": {
+          "const": "yuv420p",
+          "default": "yuv420p",
+          "title": "Pixel Format",
+          "type": "string"
+        },
+        "preset": {
+          "$ref": "#/$defs/EncoderPreset",
+          "default": "balanced"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "true_peak_dbtp": {
+          "default": -1.0,
+          "maximum": 0,
+          "minimum": -10,
+          "title": "True Peak Dbtp",
+          "type": "number"
+        },
+        "video_codec": {
+          "const": "h264",
+          "default": "h264",
+          "title": "Video Codec",
+          "type": "string"
+        },
+        "width": {
+          "maximum": 7680,
+          "minimum": 16,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "width",
+        "height",
+        "frame_rate"
+      ],
+      "title": "RenderProfile",
+      "type": "object"
+    },
+    "SelectionMode": {
+      "enum": [
+        "human",
+        "auto_top"
+      ],
+      "title": "SelectionMode",
+      "type": "string"
+    },
+    "TaskType": {
+      "description": "Smallest schedulable unit types (spec \u00a77). Batch-level tasks have no clip.",
+      "enum": [
+        "analyze_source",
+        "discover_clips",
+        "plan_clip",
+        "structural_edit",
+        "captions",
+        "visual_polish",
+        "audio_polish",
+        "enhancement",
+        "assemble_draft",
+        "render_preview",
+        "technical_qa",
+        "editorial_qa",
+        "revision",
+        "export"
+      ],
+      "title": "TaskType",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/batch.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "client_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Client Id"
+    },
+    "context_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Context Hash",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "instructions": {
+      "default": "",
+      "maxLength": 10000,
+      "title": "Instructions",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 80,
+      "title": "Name",
+      "type": "string"
+    },
+    "paused": {
+      "default": false,
+      "title": "Paused",
+      "type": "boolean"
+    },
+    "policy": {
+      "$ref": "#/$defs/BatchPolicy"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sequence": {
+      "minimum": 1,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "status": {
+      "$ref": "#/$defs/BatchStatus",
+      "default": "created"
+    }
+  },
+  "required": [
+    "id",
+    "project_id",
+    "name",
+    "sequence",
+    "policy",
+    "context_hash"
+  ],
+  "title": "Batch",
+  "type": "object"
+}

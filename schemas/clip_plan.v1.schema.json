@@ -1,0 +1,447 @@
+{
+  "$defs": {
+    "CaptionPreset": {
+      "description": "Enumerated burn-in styles (two lines max, phone-safe margins). Never free-form ASS/filters.",
+      "enum": [
+        "clean_white",
+        "bold_yellow",
+        "boxed"
+      ],
+      "title": "CaptionPreset",
+      "type": "string"
+    },
+    "ColorPreset": {
+      "description": "Fixed, gentle grade presets applied after compositing. ``none`` leaves pixels untouched.",
+      "enum": [
+        "none",
+        "natural",
+        "warm",
+        "cool"
+      ],
+      "title": "ColorPreset",
+      "type": "string"
+    },
+    "EncoderPreset": {
+      "enum": [
+        "fast",
+        "balanced",
+        "quality"
+      ],
+      "title": "EncoderPreset",
+      "type": "string"
+    },
+    "FrameRate": {
+      "description": "Exact rational frame rate, e.g. 30/1 or 30000/1001.",
+      "properties": {
+        "den": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Den",
+          "type": "integer"
+        },
+        "num": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Num",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "num"
+      ],
+      "title": "FrameRate",
+      "type": "object"
+    },
+    "Pacing": {
+      "enum": [
+        "calm",
+        "balanced",
+        "fast"
+      ],
+      "title": "Pacing",
+      "type": "string"
+    },
+    "PassKind": {
+      "enum": [
+        "structural",
+        "captions",
+        "visual",
+        "audio",
+        "broll",
+        "music",
+        "sfx",
+        "transitions"
+      ],
+      "title": "PassKind",
+      "type": "string"
+    },
+    "PlannedCut": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "first_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "First Word Id",
+          "type": "string"
+        },
+        "last_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Last Word Id",
+          "type": "string"
+        },
+        "rationale": {
+          "default": "",
+          "maxLength": 1000,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "source_in_frames": {
+          "minimum": 0,
+          "title": "Source In Frames",
+          "type": "integer"
+        },
+        "source_out_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Source Out Frames",
+          "type": "integer"
+        },
+        "transcript_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Transcript Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "transcript_id",
+        "first_word_id",
+        "last_word_id",
+        "source_in_frames",
+        "source_out_frames"
+      ],
+      "title": "PlannedCut",
+      "type": "object"
+    },
+    "QACriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "title": "QACriterion",
+      "type": "object"
+    },
+    "RenderProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "audio_channels": {
+          "default": 2,
+          "enum": [
+            1,
+            2
+          ],
+          "title": "Audio Channels",
+          "type": "integer"
+        },
+        "audio_codec": {
+          "const": "aac",
+          "default": "aac",
+          "title": "Audio Codec",
+          "type": "string"
+        },
+        "audio_sample_rate": {
+          "default": 48000,
+          "enum": [
+            44100,
+            48000
+          ],
+          "title": "Audio Sample Rate",
+          "type": "integer"
+        },
+        "container": {
+          "const": "mp4",
+          "default": "mp4",
+          "title": "Container",
+          "type": "string"
+        },
+        "frame_rate": {
+          "$ref": "#/$defs/FrameRate"
+        },
+        "height": {
+          "maximum": 7680,
+          "minimum": 16,
+          "title": "Height",
+          "type": "integer"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "loudness_lufs": {
+          "default": -16.0,
+          "maximum": -5,
+          "minimum": -40,
+          "title": "Loudness Lufs",
+          "type": "number"
+        },
+        "pixel_format": {
+          "const": "yuv420p",
+          "default": "yuv420p",
+          "title": "Pixel Format",
+          "type": "string"
+        },
+        "preset": {
+          "$ref": "#/$defs/EncoderPreset",
+          "default": "balanced"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "true_peak_dbtp": {
+          "default": -1.0,
+          "maximum": 0,
+          "minimum": -10,
+          "title": "True Peak Dbtp",
+          "type": "number"
+        },
+        "video_codec": {
+          "const": "h264",
+          "default": "h264",
+          "title": "Video Codec",
+          "type": "string"
+        },
+        "width": {
+          "maximum": 7680,
+          "minimum": 16,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "width",
+        "height",
+        "frame_rate"
+      ],
+      "title": "RenderProfile",
+      "type": "object"
+    },
+    "ResolvedCreative": {
+      "additionalProperties": false,
+      "description": "Creative settings after every layer was applied; nothing is left to inherit.",
+      "properties": {
+        "caption_preset": {
+          "$ref": "#/$defs/CaptionPreset",
+          "default": "clean_white"
+        },
+        "captions": {
+          "default": true,
+          "title": "Captions",
+          "type": "boolean"
+        },
+        "color_preset": {
+          "$ref": "#/$defs/ColorPreset",
+          "default": "none"
+        },
+        "normalize_audio": {
+          "default": true,
+          "title": "Normalize Audio",
+          "type": "boolean"
+        },
+        "pacing": {
+          "$ref": "#/$defs/Pacing",
+          "default": "balanced"
+        },
+        "platform": {
+          "default": "",
+          "maxLength": 60,
+          "title": "Platform",
+          "type": "string"
+        },
+        "tone": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Tone",
+          "type": "string"
+        }
+      },
+      "title": "ResolvedCreative",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/clip_plan.v1.json",
+  "additionalProperties": false,
+  "description": "Immutable, source-linked production plan for one clip (spec \u00a76).",
+  "properties": {
+    "allowed_exceptions": {
+      "items": {
+        "maxLength": 300,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Allowed Exceptions",
+      "type": "array"
+    },
+    "asset_request_ids": {
+      "items": {
+        "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Asset Request Ids",
+      "type": "array"
+    },
+    "author": {
+      "default": "engine",
+      "enum": [
+        "engine",
+        "agent"
+      ],
+      "title": "Author",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "clip_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Clip Id",
+      "type": "string"
+    },
+    "conditional_passes": {
+      "items": {
+        "$ref": "#/$defs/PassKind"
+      },
+      "title": "Conditional Passes",
+      "type": "array"
+    },
+    "context_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Context Hash",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "creative": {
+      "$ref": "#/$defs/ResolvedCreative"
+    },
+    "cuts": {
+      "items": {
+        "$ref": "#/$defs/PlannedCut"
+      },
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Cuts",
+      "type": "array"
+    },
+    "delivery_name": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_\\-]{0,59}$",
+      "title": "Delivery Name",
+      "type": "string"
+    },
+    "expected_duration_frames": {
+      "exclusiveMinimum": 0,
+      "title": "Expected Duration Frames",
+      "type": "integer"
+    },
+    "hook": {
+      "maxLength": 500,
+      "title": "Hook",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "narrative_goal": {
+      "maxLength": 1000,
+      "minLength": 1,
+      "title": "Narrative Goal",
+      "type": "string"
+    },
+    "output_profile": {
+      "$ref": "#/$defs/RenderProfile"
+    },
+    "qa_criteria": {
+      "items": {
+        "$ref": "#/$defs/QACriterion"
+      },
+      "maxItems": 20,
+      "title": "Qa Criteria",
+      "type": "array"
+    },
+    "reference_ids": {
+      "items": {
+        "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Reference Ids",
+      "type": "array"
+    },
+    "required_passes": {
+      "items": {
+        "$ref": "#/$defs/PassKind"
+      },
+      "title": "Required Passes",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "version": {
+      "minimum": 1,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "clip_id",
+    "version",
+    "candidate_id",
+    "narrative_goal",
+    "hook",
+    "cuts",
+    "expected_duration_frames",
+    "output_profile",
+    "required_passes",
+    "delivery_name",
+    "creative",
+    "context_hash"
+  ],
+  "title": "ClipPlan",
+  "type": "object"
+}

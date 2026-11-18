@@ -37,6 +37,16 @@ def _fixtures(args: argparse.Namespace) -> int:
 
 
 def _mcp(args: argparse.Namespace) -> int:
+    if args.scoped:
+        import os
+
+        from ageneditor.mcp_server import build_scoped_server
+
+        token = os.environ.get("AGENEDITOR_TASK_TOKEN", "")
+        if not token:
+            raise EngineException(ErrorCode.PERMISSION_DENIED, "scoped mode needs AGENEDITOR_TASK_TOKEN")
+        build_scoped_server(Path(args.workspace), token).run(transport="stdio")
+        return 0
     from ageneditor.mcp_server import run_stdio
 
     run_stdio(Path(args.workspace), shared_service=args.shared_service)
@@ -134,6 +144,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     m.add_argument(
         "--shared-service", action="store_true", help="forward tools to the desktop engine service"
+    )
+    m.add_argument(
+        "--scoped",
+        action="store_true",
+        help="AgenEditor 2.0 production worker: only scoped tools, authorized by AGENEDITOR_TASK_TOKEN",
     )
     m.set_defaults(func=_mcp)
 

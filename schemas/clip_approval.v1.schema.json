@@ -1,0 +1,96 @@
+{
+  "$id": "https://ageneditor.local/schemas/clip_approval.v1.json",
+  "additionalProperties": false,
+  "description": "A person's approval of exactly one reviewed revision + artifact (spec \u00a78 invariant).",
+  "properties": {
+    "approved_at": {
+      "format": "date-time",
+      "title": "Approved At",
+      "type": "string"
+    },
+    "approved_by": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Approved By",
+      "type": "string"
+    },
+    "clip_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Clip Id",
+      "type": "string"
+    },
+    "export_profile_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Export Profile Hash",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "note": {
+      "default": "",
+      "maxLength": 500,
+      "title": "Note",
+      "type": "string"
+    },
+    "policy_snapshot_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Policy Snapshot Hash",
+      "type": "string"
+    },
+    "render_artifact_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Render Artifact Id",
+      "type": "string"
+    },
+    "render_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Render Sha256",
+      "type": "string"
+    },
+    "revoked_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Revoked At"
+    },
+    "revoked_reason": {
+      "default": "",
+      "maxLength": 300,
+      "title": "Revoked Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "timeline_revision": {
+      "minimum": 0,
+      "title": "Timeline Revision",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "clip_id",
+    "timeline_revision",
+    "render_artifact_id",
+    "render_sha256",
+    "export_profile_hash",
+    "policy_snapshot_hash",
+    "approved_by"
+  ],
+  "title": "ClipApproval",
+  "type": "object"
+}

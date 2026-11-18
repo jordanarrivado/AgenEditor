@@ -1,0 +1,179 @@
+{
+  "$defs": {
+    "DeliveredClip": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "captions": {
+          "anyOf": [
+            {
+              "maxLength": 400,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Captions"
+        },
+        "clip_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "export_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Export Id",
+          "type": "string"
+        },
+        "timeline_revision": {
+          "minimum": 0,
+          "title": "Timeline Revision",
+          "type": "integer"
+        },
+        "title": {
+          "maxLength": 200,
+          "title": "Title",
+          "type": "string"
+        },
+        "video": {
+          "maxLength": 400,
+          "title": "Video",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clip_id",
+        "title",
+        "timeline_revision",
+        "approval_id",
+        "export_id",
+        "video"
+      ],
+      "title": "DeliveredClip",
+      "type": "object"
+    },
+    "ManifestFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 400,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "size_bytes"
+      ],
+      "title": "ManifestFile",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/delivery_manifest.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "authorized_by": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Authorized By",
+      "type": "string"
+    },
+    "batch_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Batch Id",
+      "type": "string"
+    },
+    "client_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Client Id"
+    },
+    "clips": {
+      "items": {
+        "$ref": "#/$defs/DeliveredClip"
+      },
+      "minItems": 1,
+      "title": "Clips",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/ManifestFile"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "notice": {
+      "const": "Packaged locally. AgenEditor did not upload, send or notify anyone.",
+      "default": "Packaged locally. AgenEditor did not upload, send or notify anyone.",
+      "title": "Notice",
+      "type": "string"
+    },
+    "package_name": {
+      "maxLength": 120,
+      "title": "Package Name",
+      "type": "string"
+    },
+    "partial": {
+      "title": "Partial",
+      "type": "boolean"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "batch_id",
+    "project_id",
+    "package_name",
+    "partial",
+    "clips",
+    "authorized_by"
+  ],
+  "title": "DeliveryManifest",
+  "type": "object"
+}

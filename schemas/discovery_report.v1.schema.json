@@ -1,0 +1,332 @@
+{
+  "$defs": {
+    "CandidateOverlap": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "overlap_us": {
+          "exclusiveMinimum": 0,
+          "title": "Overlap Us",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "overlap_us"
+      ],
+      "title": "CandidateOverlap",
+      "type": "object"
+    },
+    "CandidateStatus": {
+      "enum": [
+        "proposed",
+        "selected",
+        "rejected"
+      ],
+      "title": "CandidateStatus",
+      "type": "string"
+    },
+    "ClipCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "batch_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "caveats": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Caveats",
+          "type": "array"
+        },
+        "duration_us": {
+          "exclusiveMinimum": 0,
+          "title": "Duration Us",
+          "type": "integer"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRange"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "hook_text": {
+          "maxLength": 500,
+          "title": "Hook Text",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "deterministic",
+            "agent"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "narrative_complete": {
+          "title": "Narrative Complete",
+          "type": "boolean"
+        },
+        "overall_score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Overall Score",
+          "type": "number"
+        },
+        "overlaps": {
+          "items": {
+            "$ref": "#/$defs/CandidateOverlap"
+          },
+          "title": "Overlaps",
+          "type": "array"
+        },
+        "quote": {
+          "maxLength": 4000,
+          "title": "Quote",
+          "type": "string"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "rationale": {
+          "default": "",
+          "maxLength": 1000,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "scores": {
+          "$ref": "#/$defs/QualityScores"
+        },
+        "status": {
+          "$ref": "#/$defs/CandidateStatus",
+          "default": "proposed"
+        },
+        "topic": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Topic",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "batch_id",
+        "rank",
+        "topic",
+        "hook_text",
+        "quote",
+        "evidence",
+        "duration_us",
+        "scores",
+        "overall_score",
+        "narrative_complete",
+        "method"
+      ],
+      "title": "ClipCandidate",
+      "type": "object"
+    },
+    "EvidenceRange": {
+      "additionalProperties": false,
+      "description": "A contiguous run of cited transcript words in one registered source.",
+      "properties": {
+        "asset_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "end_us": {
+          "exclusiveMinimum": 0,
+          "title": "End Us",
+          "type": "integer"
+        },
+        "first_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "First Word Id",
+          "type": "string"
+        },
+        "last_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Last Word Id",
+          "type": "string"
+        },
+        "start_us": {
+          "minimum": 0,
+          "title": "Start Us",
+          "type": "integer"
+        },
+        "transcript_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Transcript Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "transcript_id",
+        "first_word_id",
+        "last_word_id",
+        "start_us",
+        "end_us"
+      ],
+      "title": "EvidenceRange",
+      "type": "object"
+    },
+    "QualityScores": {
+      "additionalProperties": false,
+      "description": "Advisory 0-1 scores. Weighting is unvalidated until compared with human-reviewed samples.",
+      "properties": {
+        "clarity": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Clarity",
+          "type": "number"
+        },
+        "coherence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Coherence",
+          "type": "number"
+        },
+        "hook": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Hook",
+          "type": "number"
+        },
+        "relevance": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relevance"
+        },
+        "source_condition": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Source Condition",
+          "type": "number"
+        },
+        "visual_potential": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Visual Potential"
+        }
+      },
+      "required": [
+        "hook",
+        "coherence",
+        "clarity",
+        "source_condition"
+      ],
+      "title": "QualityScores",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/discovery_report.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "batch_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Batch Id",
+      "type": "string"
+    },
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/ClipCandidate"
+      },
+      "title": "Candidates",
+      "type": "array"
+    },
+    "method": {
+      "enum": [
+        "deterministic",
+        "agent"
+      ],
+      "title": "Method",
+      "type": "string"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Notes",
+      "type": "array"
+    },
+    "recommended_count": {
+      "minimum": 0,
+      "title": "Recommended Count",
+      "type": "integer"
+    },
+    "requested": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Requested"
+    },
+    "shortfall": {
+      "minimum": 0,
+      "title": "Shortfall",
+      "type": "integer"
+    },
+    "viable_count": {
+      "minimum": 0,
+      "title": "Viable Count",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "batch_id",
+    "method",
+    "viable_count",
+    "recommended_count",
+    "shortfall"
+  ],
+  "title": "DiscoveryReport",
+  "type": "object"
+}

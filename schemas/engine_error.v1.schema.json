@@ -23,7 +23,19 @@
         "PLAN_RETRY_LIMIT",
         "OUT_OF_CONTEXT",
         "INSUFFICIENT_DISK",
-        "DOWNLOAD_FAILED"
+        "DOWNLOAD_FAILED",
+        "LEASE_EXPIRED",
+        "STALE_FENCE",
+        "RATE_LIMITED",
+        "PROVIDER_UNAVAILABLE",
+        "BUDGET_EXCEEDED",
+        "NO_CAPABLE_WORKER",
+        "TASK_TIMEOUT",
+        "ADAPTER_FAILED",
+        "INVALID_STATE_TRANSITION",
+        "APPROVAL_REQUIRED",
+        "DELIVERY_FAILED",
+        "HUMAN_DECISION_REQUIRED"
       ],
       "title": "ErrorCode",
       "type": "string"

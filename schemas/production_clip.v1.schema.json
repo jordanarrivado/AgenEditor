@@ -1,0 +1,274 @@
+{
+  "$defs": {
+    "CaptionPreset": {
+      "description": "Enumerated burn-in styles (two lines max, phone-safe margins). Never free-form ASS/filters.",
+      "enum": [
+        "clean_white",
+        "bold_yellow",
+        "boxed"
+      ],
+      "title": "CaptionPreset",
+      "type": "string"
+    },
+    "ClipStatus": {
+      "enum": [
+        "discovered",
+        "planned",
+        "waiting_for_assets",
+        "ready",
+        "editing",
+        "preview_rendering",
+        "technical_qa",
+        "editorial_qa",
+        "needs_revision",
+        "review_ready",
+        "human_approved",
+        "exported",
+        "delivered",
+        "blocked",
+        "retry_wait",
+        "needs_human",
+        "failed",
+        "cancelled"
+      ],
+      "title": "ClipStatus",
+      "type": "string"
+    },
+    "ColorPreset": {
+      "description": "Fixed, gentle grade presets applied after compositing. ``none`` leaves pixels untouched.",
+      "enum": [
+        "none",
+        "natural",
+        "warm",
+        "cool"
+      ],
+      "title": "ColorPreset",
+      "type": "string"
+    },
+    "CreativeDefaults": {
+      "additionalProperties": false,
+      "description": "Overridable creative defaults. ``None`` means \"inherit from the layer above\".",
+      "properties": {
+        "caption_preset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaptionPreset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "captions": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Captions"
+        },
+        "color_preset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ColorPreset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "normalize_audio": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalize Audio"
+        },
+        "pacing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pacing"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "platform": {
+          "anyOf": [
+            {
+              "maxLength": 60,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Platform"
+        },
+        "tone": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tone"
+        }
+      },
+      "title": "CreativeDefaults",
+      "type": "object"
+    },
+    "Pacing": {
+      "enum": [
+        "calm",
+        "balanced",
+        "fast"
+      ],
+      "title": "Pacing",
+      "type": "string"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/production_clip.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "batch_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Batch Id",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "creative": {
+      "$ref": "#/$defs/CreativeDefaults"
+    },
+    "current_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Current Revision"
+    },
+    "draft_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Draft Revision"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "instructions": {
+      "default": "",
+      "maxLength": 4000,
+      "title": "Instructions",
+      "type": "string"
+    },
+    "ordinal": {
+      "minimum": 1,
+      "title": "Ordinal",
+      "type": "integer"
+    },
+    "plan_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Plan Id"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "$ref": "#/$defs/ClipStatus",
+      "default": "discovered"
+    },
+    "status_reason": {
+      "default": "",
+      "maxLength": 500,
+      "title": "Status Reason",
+      "type": "string"
+    },
+    "team_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Team Id"
+    },
+    "title": {
+      "maxLength": 200,
+      "title": "Title",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "batch_id",
+    "candidate_id",
+    "title",
+    "ordinal"
+  ],
+  "title": "ProductionClip",
+  "type": "object"
+}

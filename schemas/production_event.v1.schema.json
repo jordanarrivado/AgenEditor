@@ -1,0 +1,52 @@
+{
+  "$id": "https://ageneditor.local/schemas/production_event.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "aggregate_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Aggregate Id",
+      "type": "string"
+    },
+    "aggregate_type": {
+      "enum": [
+        "batch",
+        "clip",
+        "task",
+        "attempt",
+        "review",
+        "approval",
+        "delivery"
+      ],
+      "title": "Aggregate Type",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "event_type": {
+      "maxLength": 60,
+      "title": "Event Type",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "seq": {
+      "minimum": 1,
+      "title": "Seq",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "seq",
+    "event_type",
+    "aggregate_type",
+    "aggregate_id"
+  ],
+  "title": "ProductionEvent",
+  "type": "object"
+}

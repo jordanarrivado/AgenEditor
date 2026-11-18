@@ -17,9 +17,18 @@ from ageneditor.contracts import (
     Job,
     JobKind,
     JobStatus,
+    RenderProfile,
 )
 from ageneditor.media.render import render_timeline
 from ageneditor.storage import ProjectStore
+
+
+def preview_profile(profile: RenderProfile) -> RenderProfile:
+    """Same aspect and frame rate, at most 720x1280, fast preset: for quick review renders."""
+    scale = min(Fraction(720, profile.width), Fraction(1280, profile.height), Fraction(1))
+    width = max(16, (int(profile.width * scale) // 2) * 2)
+    height = max(16, (int(profile.height * scale) // 2) * 2)
+    return profile.model_copy(update={"width": width, "height": height, "preset": EncoderPreset.FAST})
 
 
 class JobManager:
@@ -33,18 +42,9 @@ class JobManager:
         self.store.require_asset_requests_ready()
         timeline = self.store.timeline(revision)
         if not final:
-            profile = timeline.render_profile
-            scale = min(Fraction(720, profile.width), Fraction(1280, profile.height), Fraction(1))
-            width = max(16, (int(profile.width * scale) // 2) * 2)
-            height = max(16, (int(profile.height * scale) // 2) * 2)
-            preview_profile = profile.model_copy(
-                update={
-                    "width": width,
-                    "height": height,
-                    "preset": EncoderPreset.FAST,
-                }
+            timeline = timeline.model_copy(
+                update={"render_profile": preview_profile(timeline.render_profile)}
             )
-            timeline = timeline.model_copy(update={"render_profile": preview_profile})
         kind = JobKind.FINAL_RENDER if final else JobKind.PREVIEW_RENDER
         job_id = f"job_{uuid.uuid4().hex[:20]}"
         output_path = f"renders/{job_id}/{'final' if final else 'preview'}.mp4"

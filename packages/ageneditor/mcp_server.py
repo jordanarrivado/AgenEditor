@@ -17,13 +17,17 @@ from ageneditor.captions import to_srt
 from ageneditor.contracts import (
     AssetProvenance,
     AssetRole,
+    CandidateProposal,
+    ClipPlanDraft,
     EditPlan,
     EngineError,
     EngineException,
     ErrorCode,
     JobKind,
     ModelPreset,
+    QAFindingSubmission,
     RenderProfile,
+    RevisionOp,
     RevisionPatch,
     ShotLabel,
     Timeline,
@@ -514,3 +518,107 @@ def build_server(workspace: Path, shared_service: bool = False) -> MCPServer:
 def run_stdio(workspace: Path, shared_service: bool = False) -> None:
     # No application logging is configured on stdout; MCP owns the stdio protocol stream.
     build_server(workspace, shared_service=shared_service).run(transport="stdio")
+
+
+def build_scoped_server(workspace: Path, token: str) -> MCPServer:
+    """MCP stdio bridge for one AgenEditor 2.0 production task.
+
+    Exposes only the scoped production tools. Every call is forwarded to the shared engine service with
+    this attempt's task token; the engine checks role, tool allowlist, lease and fencing on each call.
+    """
+    from ageneditor.desktop_service import service_request
+
+    workspace = workspace.expanduser().resolve()
+    server = MCPServer("ageneditor")
+
+    def forward(tool: str, args: dict[str, Any]) -> Any:
+        try:
+            return service_request(workspace, "/scoped", {"tool": tool, "args": args, "task_token": token})[
+                "result"
+            ]
+        except EngineException as exc:
+            raise ToolError(exc.error.model_dump_json()) from exc
+
+    @server.tool()
+    def production_get_assignment() -> dict[str, Any]:
+        """Your task, its pinned instructions and policy, the clip, its plan and in-scope sources."""
+        return forward("production_get_assignment", {})
+
+    @server.tool()
+    def production_get_transcript(
+        transcript_id: str, start_word: int = 0, limit: int = 200
+    ) -> dict[str, Any]:
+        """A page of an in-scope source transcript with word IDs and exact microsecond times."""
+        return forward(
+            "production_get_transcript",
+            {"transcript_id": transcript_id, "start_word": start_word, "limit": limit},
+        )
+
+    @server.tool()
+    def production_task_complete(summary: str, no_op: bool = False, reason: str = "") -> dict[str, Any]:
+        """Say you are finished. The engine checks the clip's actual state before the task counts as done."""
+        return forward("production_task_complete", {"summary": summary, "no_op": no_op, "reason": reason})
+
+    @server.tool()
+    def discovery_submit_candidates(proposals: list[CandidateProposal]) -> dict[str, Any]:
+        """Propose clips by citing transcript word IDs. The engine derives times and the exact quotes."""
+        return forward(
+            "discovery_submit_candidates", {"proposals": [p.model_dump(mode="json") for p in proposals]}
+        )
+
+    @server.tool()
+    def plan_submit(draft: ClipPlanDraft) -> dict[str, Any]:
+        """Submit this clip's plan: ordered word-cited cuts, goal, hook and conditional passes."""
+        return forward("plan_submit", {"draft": draft.model_dump(mode="json")})
+
+    @server.tool()
+    def clip_get_timeline(revision: int | None = None) -> dict[str, Any]:
+        """Read this clip's timeline (reviewers: only the reviewed revision)."""
+        return forward("clip_get_timeline", {"revision": revision})
+
+    @server.tool()
+    def clip_validate_timeline(timeline: Timeline) -> dict[str, Any]:
+        """Validate a candidate timeline against registered assets without committing it."""
+        return forward("clip_validate_timeline", {"timeline": timeline.model_dump(mode="json")})
+
+    @server.tool()
+    def clip_apply_revision(summary: str, ops: list[RevisionOp], expected_revision: int) -> dict[str, Any]:
+        """Apply bounded typed edit operations to this clip as a new immutable revision."""
+        return forward(
+            "clip_apply_revision",
+            {
+                "summary": summary,
+                "expected_revision": expected_revision,
+                "ops": [op.model_dump(mode="json") for op in ops],
+            },
+        )
+
+    @server.tool()
+    def clip_commit_timeline(timeline: Timeline, expected_revision: int) -> dict[str, Any]:
+        """Commit a full validated timeline for this clip with optimistic revision locking."""
+        return forward(
+            "clip_commit_timeline",
+            {"timeline": timeline.model_dump(mode="json"), "expected_revision": expected_revision},
+        )
+
+    @server.tool()
+    def clip_suggest_broll(limit: int = 5) -> dict[str, Any]:
+        """Suggest supplied, labelled B-roll for this clip from spoken words. Places nothing."""
+        return forward("clip_suggest_broll", {"limit": limit})
+
+    @server.tool()
+    def production_list_transitions() -> dict[str, Any]:
+        """Transitions you may use: presets from styles the user marked active."""
+        return forward("production_list_transitions", {})
+
+    @server.tool()
+    def qa_get_review_packet() -> dict[str, Any]:
+        """Reviewers: the pinned, read-only evidence for the revision under review."""
+        return forward("qa_get_review_packet", {})
+
+    @server.tool()
+    def qa_submit_findings(submission: QAFindingSubmission) -> dict[str, Any]:
+        """Reviewers: submit your verdict and typed findings once. You cannot edit the clip."""
+        return forward("qa_submit_findings", {"submission": submission.model_dump(mode="json")})
+
+    return server

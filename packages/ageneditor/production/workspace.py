@@ -9,6 +9,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ageneditor.contracts import (
@@ -20,6 +21,7 @@ from ageneditor.contracts import (
     ProviderConfig,
     ProviderModel,
     ResourceConfig,
+    ResourceSnapshot,
     TaskType,
 )
 from ageneditor.production.common import content_hash, new_id, ts, utc_now
@@ -165,6 +167,12 @@ class WorkspaceRegistry:
             ).fetchone()
         return None if row is None else str(row[0])
 
+    def project_clients(self) -> dict[str, str]:
+        """Every project bound to a client, as ``project_id → client_id``."""
+        with self._connect() as db:
+            rows = db.execute("SELECT project_id, client_id FROM project_clients").fetchall()
+        return {str(row[0]): str(row[1]) for row in rows}
+
     # ------------------------------------------------------------ profiles
 
     @staticmethod
@@ -267,3 +275,29 @@ class WorkspaceRegistry:
                 (config.model_dump_json(),),
             )
         return config
+
+    # ------------------------------------------------------------ resource history
+
+    #: How long machine-pressure samples are kept.
+    SAMPLE_RETENTION = timedelta(days=14)
+
+    def record_resource_sample(self, snapshot: ResourceSnapshot) -> None:
+        """Append one machine-pressure sample and drop samples older than the retention window."""
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO resource_samples VALUES (?, ?)",
+                (ts(snapshot.measured_at), snapshot.model_dump_json()),
+            )
+            db.execute(
+                "DELETE FROM resource_samples WHERE measured_at < ?",
+                (ts(snapshot.measured_at - self.SAMPLE_RETENTION),),
+            )
+
+    def resource_samples(self, since: datetime, until: datetime) -> list[ResourceSnapshot]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT data FROM resource_samples WHERE measured_at >= ? AND measured_at <= ? "
+                "ORDER BY measured_at",
+                (ts(since), ts(until)),
+            ).fetchall()
+        return [ResourceSnapshot.model_validate_json(row[0]) for row in rows]

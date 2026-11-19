@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight, Check, ChevronDown, Download, Eye, Film, Folder, House, Layers, Loader2, Lock, Mic, Music2, PenLine, Play, Plus,
+  ArrowRight, Check, ChevronDown, Download, Eye, Factory, Film, Folder, House, Layers, Loader2, Lock, Mic, Music2, PenLine, Play, Plus,
   ShieldCheck, Sparkles, Square, Upload, Wand2, Wrench, X,
 } from 'lucide-react';
 import {
@@ -30,6 +30,8 @@ import { UsageBadge } from './UsageBadge';
 import { SectionLabel } from './SectionLabel';
 import { SoundLibraryPanel } from './SoundLibraryPanel';
 import { TransitionsPanel } from './TransitionsPanel';
+import { ProductionWorkspace } from '../production/ProductionWorkspace';
+import { liveProductionRepository } from '../../services/productionRepository';
 
 const field = 'w-full rounded-lg border border-line bg-app px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-3 focus:border-accent';
 const card = 'rounded-xl border border-line bg-surface';
@@ -92,6 +94,8 @@ const TOOL_LABELS: Record<string, string> = {
 export const SimpleWorkspace: React.FC = () => {
   const [projects, setProjects] = useState<EngineProject[] | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
+  // The multi-clip Production workspace (spec §16) replaces Home/project while open.
+  const [production, setProduction] = useState(false);
   const currentProjectId = useRef(projectId);
   currentProjectId.current = projectId;
   const [assets, setAssets] = useState<EngineAsset[]>([]);
@@ -259,6 +263,7 @@ export const SimpleWorkspace: React.FC = () => {
   const openProject = (id: string) => {
     setCreating(false);
     setNotice(null);
+    setProduction(false);
     setProjectId(id);
   };
 
@@ -266,6 +271,7 @@ export const SimpleWorkspace: React.FC = () => {
     if (running) return;
     setCreating(false);
     setNotice(null);
+    setProduction(false);
     setProjectId(null);
     // Revisions may have changed while the project was open.
     void refreshLibrary().catch((error) => setNotice(errorText(error)));
@@ -509,6 +515,17 @@ export const SimpleWorkspace: React.FC = () => {
           </form>
         ) : <Button variant="ghost" size="lg" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)} disabled={running}>New project</Button>}
         </>}
+        <Button
+          variant={production ? 'secondary' : 'ghost'}
+          size="lg"
+          icon={<Factory className="h-4 w-4" />}
+          aria-pressed={production}
+          onClick={() => (production ? goHome() : setProduction(true))}
+          disabled={running}
+          title={running ? 'Claude is working; wait or press Stop first' : 'Batches of clips with AI production teams'}
+        >
+          Production
+        </Button>
         <span className="ml-auto" />
         <UsageBadge />
         <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-xs">
@@ -527,7 +544,9 @@ export const SimpleWorkspace: React.FC = () => {
         </div>
       )}
 
-      {!projectId ? (
+      {production ? (
+        <ProductionWorkspace repository={liveProductionRepository} projects={(projects ?? []).map(({ id, name }) => ({ id, name }))} />
+      ) : !projectId ? (
         <HomeView
           projects={projects}
           creating={creating}

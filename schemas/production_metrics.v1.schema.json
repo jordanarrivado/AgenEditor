@@ -1,0 +1,356 @@
+{
+  "$defs": {
+    "CostByKind": {
+      "additionalProperties": false,
+      "description": "Recorded model spend in micro-USD, never adding estimates to measured money.",
+      "properties": {
+        "estimated_micros": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Estimated Micros",
+          "type": "integer"
+        },
+        "measured_micros": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Measured Micros",
+          "type": "integer"
+        },
+        "provider_reported_micros": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Provider Reported Micros",
+          "type": "integer"
+        },
+        "unpriced_requests": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Unpriced Requests",
+          "type": "integer"
+        }
+      },
+      "title": "CostByKind",
+      "type": "object"
+    },
+    "DurationStats": {
+      "additionalProperties": false,
+      "description": "Distribution of measured durations in integer milliseconds. Empty when nothing was measured.",
+      "properties": {
+        "max_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Ms"
+        },
+        "mean_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Ms"
+        },
+        "p50_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P50 Ms"
+        },
+        "p95_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P95 Ms"
+        },
+        "samples": {
+          "minimum": 0,
+          "title": "Samples",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "samples"
+      ],
+      "title": "DurationStats",
+      "type": "object"
+    },
+    "ResourcePressure": {
+      "additionalProperties": false,
+      "description": "Machine pressure sampled by the engine during a batch's lifetime (integers, permille of total).",
+      "properties": {
+        "cpu_busy_max_permille": {
+          "anyOf": [
+            {
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Busy Max Permille"
+        },
+        "cpu_busy_mean_permille": {
+          "anyOf": [
+            {
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Busy Mean Permille"
+        },
+        "disk_free_min_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Disk Free Min Bytes"
+        },
+        "memory_available_min_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Available Min Bytes"
+        },
+        "memory_used_max_permille": {
+          "anyOf": [
+            {
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Used Max Permille"
+        },
+        "memory_used_mean_permille": {
+          "anyOf": [
+            {
+              "maximum": 1000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Used Mean Permille"
+        },
+        "pool_full_samples": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Pool Full Samples",
+          "type": "object"
+        },
+        "pool_peak_in_use": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Pool Peak In Use",
+          "type": "object"
+        },
+        "samples": {
+          "minimum": 0,
+          "title": "Samples",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "samples"
+      ],
+      "title": "ResourcePressure",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/production_metrics.v1.json",
+  "additionalProperties": false,
+  "description": "Spec \u00a720 success indicators for one batch, derived only from engine records.\n\nValues are ``None`` (or ``samples == 0``) when the engine has not observed what they describe; nothing\nis extrapolated. Rates are left to the reader: divide counts by the measured elapsed time.",
+  "properties": {
+    "attempt_run": {
+      "$ref": "#/$defs/DurationStats"
+    },
+    "attempts_total": {
+      "minimum": 0,
+      "title": "Attempts Total",
+      "type": "integer"
+    },
+    "attempts_unsuccessful": {
+      "minimum": 0,
+      "title": "Attempts Unsuccessful",
+      "type": "integer"
+    },
+    "batch_created_at": {
+      "format": "date-time",
+      "title": "Batch Created At",
+      "type": "string"
+    },
+    "batch_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Batch Id",
+      "type": "string"
+    },
+    "checkpoint_reuses": {
+      "minimum": 0,
+      "title": "Checkpoint Reuses",
+      "type": "integer"
+    },
+    "clips_approved": {
+      "minimum": 0,
+      "title": "Clips Approved",
+      "type": "integer"
+    },
+    "clips_delivered": {
+      "minimum": 0,
+      "title": "Clips Delivered",
+      "type": "integer"
+    },
+    "clips_reached_review": {
+      "minimum": 0,
+      "title": "Clips Reached Review",
+      "type": "integer"
+    },
+    "clips_total": {
+      "minimum": 0,
+      "title": "Clips Total",
+      "type": "integer"
+    },
+    "cost": {
+      "$ref": "#/$defs/CostByKind"
+    },
+    "first_review_ready_ms": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "First Review Ready Ms"
+    },
+    "last_approval_ms": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Approval Ms"
+    },
+    "measured_at": {
+      "format": "date-time",
+      "title": "Measured At",
+      "type": "string"
+    },
+    "pressure": {
+      "$ref": "#/$defs/ResourcePressure"
+    },
+    "queue_wait": {
+      "$ref": "#/$defs/DurationStats"
+    },
+    "revision_tasks": {
+      "minimum": 0,
+      "title": "Revision Tasks",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "tasks_failed": {
+      "minimum": 0,
+      "title": "Tasks Failed",
+      "type": "integer"
+    },
+    "tasks_succeeded": {
+      "minimum": 0,
+      "title": "Tasks Succeeded",
+      "type": "integer"
+    },
+    "tasks_total": {
+      "minimum": 0,
+      "title": "Tasks Total",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "batch_id",
+    "measured_at",
+    "batch_created_at",
+    "clips_total",
+    "clips_reached_review",
+    "clips_approved",
+    "clips_delivered",
+    "queue_wait",
+    "attempt_run",
+    "attempts_total",
+    "attempts_unsuccessful",
+    "tasks_total",
+    "tasks_succeeded",
+    "tasks_failed",
+    "checkpoint_reuses",
+    "revision_tasks",
+    "cost"
+  ],
+  "title": "ProductionMetrics",
+  "type": "object"
+}

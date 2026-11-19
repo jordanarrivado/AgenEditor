@@ -303,6 +303,16 @@ def test_partial_delivery_packages_only_enumerated_approved_clips(tmp_path: Path
     package_delivery(production, batch_id, [b.id], "Producer")
     assert production.batch(batch_id).status is BatchStatus.COMPLETED
 
+    from ageneditor.production.metrics import batch_metrics
+
+    metrics = batch_metrics(production, batch_id)
+    assert (metrics.clips_total, metrics.clips_reached_review) == (2, 2)
+    assert (metrics.clips_approved, metrics.clips_delivered) == (2, 2)
+    assert metrics.first_review_ready_ms is not None and metrics.last_approval_ms is not None
+    assert metrics.first_review_ready_ms <= metrics.last_approval_ms
+    assert metrics.queue_wait.samples > 0 and metrics.attempt_run.samples > 0
+    assert metrics.tasks_failed == 0 and 0 < metrics.tasks_succeeded <= metrics.tasks_total
+
 
 def test_client_rule_can_forbid_partial_delivery(tmp_path: Path, media_dir: Path) -> None:
     from ageneditor.production.delivery_service import package_delivery

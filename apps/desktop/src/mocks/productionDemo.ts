@@ -4,8 +4,8 @@
  * and nothing is sent anywhere. The UI labels every screen that uses it as a simulation. */
 
 import type {
-  Batch, BatchStatusDetail, BatchSummary, Candidate, ClipDetail, ClipStatus, DeliveryManifest, NewBatch, Overview,
-  ProductionClip, ProductionRepository, ProductionTask, ProviderInfo, ResourceConfig, UsageRow,
+  Batch, BatchStatusDetail, BatchSummary, Candidate, Client, ClipDetail, ClipStatus, DeliveryManifest, InstructionProfile,
+  NewBatch, Overview, ProductionClip, ProductionRepository, ProductionTask, ProfileScope, ProviderInfo, ResourceConfig, UsageRow,
 } from '../services/productionRepository';
 
 const now = () => new Date().toISOString();
@@ -20,8 +20,20 @@ interface DemoState {
   providers: ProviderInfo[];
   config: ResourceConfig;
   usage: UsageRow[];
+  clients: Client[];
+  bindings: Record<string, string>;
+  /** Every saved profile revision, keyed by scope ("global" or "client:<id>"). */
+  profiles: Record<string, InstructionProfile[]>;
   seq: number;
 }
+
+const emptyProfile = (scope: ProfileScope, clientId: string | null): InstructionProfile => ({
+  schema_version: 1, scope, client_id: clientId, revision: 0,
+  creative: { caption_preset: null, color_preset: null, captions: null, normalize_audio: null, pacing: null, tone: null, platform: null },
+  instructions: '', required_constraints: [], locked_creative: [], style_observations: [],
+  delivery: { allow_partial_delivery: true, include_captions: true, include_project_snapshot: true, naming_prefix: null },
+});
+const profileKey = (scope: ProfileScope, clientId?: string | null) => (scope === 'global' ? 'global' : `client:${clientId}`);
 
 const policy = (count: number | null): Batch['policy'] => ({
   target_mode: count ? 'count' : 'auto', target_count: count, min_duration_us: 20_000_000, max_duration_us: 60_000_000,
@@ -32,6 +44,7 @@ const clip = (n: number, batchId: string, title: string, status: ClipStatus, rea
   id: sample(100 + n), batch_id: batchId, title, ordinal: n, status, status_reason: reason,
   current_revision: status === 'discovered' ? null : 4, draft_revision: ['review_ready', 'human_approved', 'exported'].includes(status) ? 4 : null,
   team_id: status === 'editing' ? 'team_demo_a' : null, updated_at: now(),
+  plan_id: status === 'discovered' ? null : `plan_demo_${n}`, instructions: '',
 });
 
 const task = (n: number, clipId: string | null, type: string, status: ProductionTask['status'], extra: Partial<ProductionTask> = {}): ProductionTask => ({
@@ -71,6 +84,9 @@ function initial(): DemoState {
     config: { team_slots: 2, analysis_slots: 1, render_slots: 1, qa_slots: 1, lease_seconds: 120, host_timeout_seconds: 1800 },
     usage: [{ provider_id: 'anthropic_api', model: 'claude-opus-5-5', tokens_in: 24000, tokens_out: 2100, cost_micros: 138000,
       cost_kind: 'estimated', task_type: 'editorial_qa', batch_id: batch.id, created_at: now() }],
+    clients: [{ id: 'client_demo', name: 'Demo client', status: 'active' }],
+    bindings: { project_demo: 'client_demo' },
+    profiles: {},
     seq: 1,
   };
 }
@@ -209,6 +225,47 @@ export function createDemoProductionRepository(): ProductionRepository {
       return manifest;
     },
     async costs() { return state.usage; },
+    async metrics(batchId) {
+      // Simulation: counts follow the demo clips; durations are fixed sample values, not measurements.
+      const batch = find(batchId);
+      const clips = state.clips.filter((c) => c.batch_id === batchId);
+      const approved = clips.filter((c) => ['human_approved', 'exported', 'delivered'].includes(c.status)).length;
+      const reviewed = approved + clips.filter((c) => c.status === 'review_ready').length;
+      const sampleStats = (mean: number) => ({ samples: 6, mean_ms: mean, p50_ms: mean, p95_ms: mean * 3, max_ms: mean * 4 });
+      return {
+        batch_id: batchId, measured_at: now(), batch_created_at: batch.created_at,
+        clips_total: clips.length, clips_reached_review: reviewed, clips_approved: approved,
+        clips_delivered: clips.filter((c) => c.status === 'delivered').length,
+        first_review_ready_ms: reviewed ? 1_260_000 : null, last_approval_ms: approved ? 2_700_000 : null,
+        queue_wait: sampleStats(4_000), attempt_run: sampleStats(48_000),
+        attempts_total: 9, attempts_unsuccessful: 1, tasks_total: 12, tasks_succeeded: 7, tasks_failed: 0,
+        checkpoint_reuses: 2, revision_tasks: 1,
+        cost: { measured_micros: 0, provider_reported_micros: 0, estimated_micros: 138_000, unpriced_requests: 0 },
+        pressure: {
+          samples: 12, cpu_busy_mean_permille: 420, cpu_busy_max_permille: 910, memory_used_mean_permille: 610,
+          memory_used_max_permille: 740, memory_available_min_bytes: 4_200_000_000, disk_free_min_bytes: 120_000_000_000,
+          pool_peak_in_use: { team: 2, render: 1, analysis: 1, qa: 1 }, pool_full_samples: { team: 5, render: 3 },
+        },
+      };
+    },
+    async referenceAssets(projectId) {
+      return projectId === 'project_demo' ? [{ id: 'asset_demo_ref', name: 'reference_reel.mp4', kind: 'video', duration_us: 32_000_000 }] : [];
+    },
+    async measureReference(_projectId, assetId) {
+      // Simulation: fixed sample notes; no file is decoded.
+      const note = (key: string, label: string, value: string) => ({
+        id: `ref-${key}-${assetId}`.slice(0, 64), label, value: `${value} (simulation)`, basis: 'measured' as const, source_asset_id: assetId,
+      });
+      return [
+        note('frame', 'Frame', '1080x1920 (vertical, 9:16)'),
+        note('shot', 'Average shot length', '2.1 s'),
+        note('loudness', 'Integrated loudness', '-14.3 LUFS'),
+      ];
+    },
+    // Demo state changes only through this tab's own actions, which refresh anyway: wait, then report no change.
+    waitForChanges(cursor, waitMs) {
+      return new Promise((resolve) => { window.setTimeout(() => resolve({ cursor: cursor ?? 'demo', changed: false }), waitMs); });
+    },
     async providers() { return state.providers; },
     async setProviderEnabled(providerId, enabled) {
       state = { ...state, providers: state.providers.map((p) => (p.id === providerId ? { ...p, enabled } : p)) };
@@ -218,9 +275,45 @@ export function createDemoProductionRepository(): ProductionRepository {
       return { config: state.config, snapshot: (await this.overview()).resources };
     },
     async saveResources(config) { state = { ...state, config }; return config; },
-    async clients() { return [{ id: 'client_demo', name: 'Demo client', status: 'active' }]; },
-    async createClient(name) { return { id: `client_demo_${name.length}`, name, status: 'active' }; },
-    async bindProject(projectId, clientId) { return { project_id: projectId, client_id: clientId }; },
+    async clients() { return state.clients; },
+    async createClient(name) {
+      const trimmed = name.trim();
+      if (!trimmed) throw new Error('name the client');
+      if (state.clients.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())) throw new Error('a client with this name already exists');
+      state.seq += 1;
+      const client: Client = { id: `client_demo_${state.seq}`, name: trimmed, status: 'active' };
+      state = { ...state, clients: [...state.clients, client].sort((a, b) => a.name.localeCompare(b.name)) };
+      return client;
+    },
+    async bindProject(projectId, clientId) {
+      const bound = state.bindings[projectId];
+      if (bound && bound !== clientId && state.batches.some((b) => b.project_id === projectId)) {
+        throw new Error('a project with batches cannot move to another client');
+      }
+      state = { ...state, bindings: { ...state.bindings, [projectId]: clientId } };
+      return { project_id: projectId, client_id: clientId };
+    },
+    async projectClients() { return { ...state.bindings }; },
+    async getProfile(scope, clientId) {
+      const history = state.profiles[profileKey(scope, clientId)] ?? [];
+      return history[history.length - 1] ?? emptyProfile(scope, scope === 'client' ? clientId ?? null : null);
+    },
+    async saveProfile(profile, expectedRevision) {
+      const key = profileKey(profile.scope, profile.client_id);
+      const history = state.profiles[key] ?? [];
+      const current = history[history.length - 1]?.revision ?? 0;
+      if (current !== expectedRevision) throw new Error('{"code":"REVISION_CONFLICT","message":"profile changed; refresh it before saving"}');
+      const saved = { ...profile, revision: current + 1 };
+      state = { ...state, profiles: { ...state.profiles, [key]: [...history, saved] } };
+      return saved;
+    },
+    async setClipInstructions(clipId, instructions) {
+      const item = state.clips.find((c) => c.id === clipId);
+      if (!item) throw new Error('Demo clip not found');
+      if (item.plan_id) throw new Error('the clip is already planned');
+      setClip(clipId, { instructions });
+      return state.clips.find((c) => c.id === clipId)!;
+    },
     fileUrl: () => null,
   };
 }

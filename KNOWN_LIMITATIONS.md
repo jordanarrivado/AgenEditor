@@ -87,6 +87,29 @@ Kept current per release (roadmap project management recommendation).
   Missing license texts are listed in the generated inventory; redistribution review is still required.
 * The native installer still needs clean-Windows and unaided-user acceptance tests.
 
+## AgenEditor 2.0 - multi-clip production
+
+* Gates B-E (batches, scoped teams, recovery, centralized QA, delivery) are covered by engine tests on
+  synthetic fixtures only. The three-clip/two-team reference workflow has not been run on real footage or
+  benchmarked. Per-batch measurement now exists (`production_metrics`: approved clips per hour, time to
+  first reviewable clip, queue wait, attempt time, revision rounds, checkpoint reuse, cost per approved clip),
+  but no real-hardware figure has been recorded. Machine pressure (CPU busy, memory, disk, full slots) is sampled
+  every 30 s while the engine runs and kept 14 days; GPU load is not measured.
+* Gate F: the Production workspace (Overview, Queue, Teams, Review, Resources, Costs, Delivery, Clients) is tested in
+  browser Demo Mode with simulation data (Vitest + Playwright). In the native app it opens from the
+  **Production** header button and calls the allowlisted `production_*` operations; a live end-to-end session
+  in the packaged Windows app and a clean-machine install are still unverified.
+* Live updates use a long-poll (`production_changes`, up to 25 s per request) through the existing desktop
+  bridge, with a 15 s fallback poll. The Rust shell changes for 2.0 are allowlist entries only and have not
+  been compiled on a machine with the Rust toolchain yet.
+* The Clients view edits global and client instruction profiles (each save is a new revision; a stale save is
+  refused) and binds projects to clients. Per-clip instructions can be added only while a clip is still
+  unplanned, which is usually a short window unless the batch is paused. Style notes are either typed by a person
+  or measured from a reference file (frame, frame rate, cuts and shot lengths, loudness; first 5 minutes only).
+  Scene-cut detection uses a fixed FFmpeg scene threshold (0.30) that has not been tuned on real footage, and the
+  measurement test needs FFmpeg, so it has not run on this machine.
+* Resource defaults (2 teams, 1 render slot) are conservative guesses, not measured on any hardware.
+
 ## Static UI prototype
 
 * Everything is Demo Mode: sample data, simulated playhead, simulated jobs, export configuration only.

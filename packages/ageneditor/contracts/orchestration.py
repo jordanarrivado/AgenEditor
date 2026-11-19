@@ -203,6 +203,8 @@ class ResourceSnapshot(ContractModel):
     memory_total_bytes: int | None = None
     memory_available_bytes: int | None = None
     disk_free_bytes: int | None = None
+    #: Share of CPU time busy since the previous sample, in permille. ``None`` until two samples exist.
+    cpu_busy_permille: int | None = Field(default=None, ge=0, le=1000)
     measured_at: datetime = Field(default_factory=utcnow)
 
 
@@ -324,3 +326,75 @@ class ClipTaskGraph(ContractModel):
     clip_id: Identifier
     cycle: int = Field(ge=0)
     nodes: list[GraphNode] = Field(min_length=1, max_length=40)
+
+
+# ---------------------------------------------------------------- measured production metrics
+
+
+class DurationStats(ContractModel):
+    """Distribution of measured durations in integer milliseconds. Empty when nothing was measured."""
+
+    samples: int = Field(ge=0)
+    mean_ms: int | None = Field(default=None, ge=0)
+    p50_ms: int | None = Field(default=None, ge=0)
+    p95_ms: int | None = Field(default=None, ge=0)
+    max_ms: int | None = Field(default=None, ge=0)
+
+
+class CostByKind(ContractModel):
+    """Recorded model spend in micro-USD, never adding estimates to measured money."""
+
+    measured_micros: int = Field(default=0, ge=0)
+    provider_reported_micros: int = Field(default=0, ge=0)
+    estimated_micros: int = Field(default=0, ge=0)
+    #: Requests whose cost is unknown; they are in no total.
+    unpriced_requests: int = Field(default=0, ge=0)
+
+
+class ResourcePressure(ContractModel):
+    """Machine pressure sampled by the engine during a batch's lifetime (integers, permille of total)."""
+
+    samples: int = Field(ge=0)
+    cpu_busy_mean_permille: int | None = Field(default=None, ge=0, le=1000)
+    cpu_busy_max_permille: int | None = Field(default=None, ge=0, le=1000)
+    memory_used_mean_permille: int | None = Field(default=None, ge=0, le=1000)
+    memory_used_max_permille: int | None = Field(default=None, ge=0, le=1000)
+    memory_available_min_bytes: int | None = Field(default=None, ge=0)
+    disk_free_min_bytes: int | None = Field(default=None, ge=0)
+    #: Highest permits in use per pool, and how many samples found the pool full.
+    pool_peak_in_use: dict[str, int] = Field(default_factory=dict)
+    pool_full_samples: dict[str, int] = Field(default_factory=dict)
+
+
+class ProductionMetrics(ContractModel):
+    """Spec §20 success indicators for one batch, derived only from engine records.
+
+    Values are ``None`` (or ``samples == 0``) when the engine has not observed what they describe; nothing
+    is extrapolated. Rates are left to the reader: divide counts by the measured elapsed time.
+    """
+
+    schema_version: Literal[1] = 1
+    batch_id: Identifier
+    measured_at: datetime
+    batch_created_at: datetime
+    clips_total: int = Field(ge=0)
+    clips_reached_review: int = Field(ge=0)
+    clips_approved: int = Field(ge=0)
+    clips_delivered: int = Field(ge=0)
+    #: Batch creation → first clip that became ready for review.
+    first_review_ready_ms: int | None = Field(default=None, ge=0)
+    #: Batch creation → most recent active approval (the window for approved clips per hour).
+    last_approval_ms: int | None = Field(default=None, ge=0)
+    #: Task became ready → a worker leased it.
+    queue_wait: DurationStats
+    #: Attempt start → end, for attempts that ended.
+    attempt_run: DurationStats
+    attempts_total: int = Field(ge=0)
+    attempts_unsuccessful: int = Field(ge=0)
+    tasks_total: int = Field(ge=0)
+    tasks_succeeded: int = Field(ge=0)
+    tasks_failed: int = Field(ge=0)
+    checkpoint_reuses: int = Field(ge=0)
+    revision_tasks: int = Field(ge=0)
+    cost: CostByKind
+    pressure: ResourcePressure = Field(default_factory=lambda: ResourcePressure(samples=0))

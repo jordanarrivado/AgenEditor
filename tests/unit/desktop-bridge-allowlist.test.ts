@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 
 describe('desktop bridge operation allowlist', () => {
   it('permits every operation used by the live UI', () => {
-    const repository = readFileSync(resolve('apps/desktop/src/services/liveEngineRepository.ts'), 'utf8');
+    const repository = ['liveEngineRepository.ts', 'productionRepository.ts']
+      .map((file) => readFileSync(resolve('apps/desktop/src/services', file), 'utf8'))
+      .join('\n');
     const shell = readFileSync(resolve('apps/desktop/src-tauri/src/main.rs'), 'utf8');
     const allowedBlock = shell.match(/const ALLOWED: &\[&str\] = &\[([\s\S]*?)\];/);
     expect(allowedBlock).not.toBeNull();

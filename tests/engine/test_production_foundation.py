@@ -97,6 +97,34 @@ def test_client_binding_is_fixed_once_batches_exist(tmp_path: Path) -> None:
         registry.create_client("acme")
 
 
+def test_desktop_profile_and_binding_operations(tmp_path: Path) -> None:
+    from ageneditor.production.desktop_ops import production_call
+    from ageneditor.storage import ProjectStore
+
+    store = ProjectStore.create(tmp_path, "profiles")  # no media needed
+    orchestrator, _ = build(tmp_path)
+    acme = production_call(orchestrator, "production_create_client", {"name": "Acme"})
+    assert production_call(orchestrator, "production_project_clients", {}) == {}
+    production_call(
+        orchestrator, "production_bind_project", {"project_id": store.project_id, "client_id": acme["id"]}
+    )
+    assert production_call(orchestrator, "production_project_clients", {}) == {store.project_id: acme["id"]}
+
+    empty = production_call(
+        orchestrator, "production_get_profile", {"scope": "client", "client_id": acme["id"]}
+    )
+    assert empty["revision"] == 0
+    profile = {**empty, "instructions": "Warm and calm.", "locked_creative": ["color_preset"]}
+    profile["creative"] = {**empty["creative"], "color_preset": "warm"}
+    saved = production_call(
+        orchestrator, "production_save_profile", {"profile": profile, "expected_revision": 0}
+    )
+    assert saved["revision"] == 1 and saved["creative"]["color_preset"] == "warm"
+    with pytest.raises(EngineException) as stale:
+        production_call(orchestrator, "production_save_profile", {"profile": profile, "expected_revision": 0})
+    assert stale.value.error.code is ErrorCode.REVISION_CONFLICT
+
+
 def test_deterministic_discovery_is_source_linked_and_reports_shortfall(
     tmp_path: Path, media_dir: Path
 ) -> None:

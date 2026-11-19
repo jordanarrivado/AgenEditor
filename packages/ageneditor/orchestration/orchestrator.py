@@ -32,6 +32,7 @@ from ageneditor.contracts import (
     EngineException,
     ErrorCode,
     QAReviewStatus,
+    ResourceSnapshot,
     RouteKind,
     RunState,
     ScopedTask,
@@ -216,13 +217,31 @@ class ProductionOrchestrator:
 
     # ------------------------------------------------------------ main loop
 
+    #: Seconds between machine-pressure samples recorded for batch metrics.
+    RESOURCE_SAMPLE_SECONDS = 30.0
+
+    def sample_resources(self) -> ResourceSnapshot:
+        """Record one machine-pressure sample (CPU since the last sample, memory, disk, permits)."""
+        snapshot = self.resources.sample().model_copy(update={"measured_at": self.clock()})
+        self.registry.record_resource_sample(snapshot)
+        return snapshot
+
     def start(self, interval: float = 0.5) -> None:
         if self._thread is not None:
             return
         self._stop.clear()
 
         def loop() -> None:
+            import time
+
+            next_sample = 0.0
             while not self._stop.wait(interval):
+                if time.monotonic() >= next_sample:
+                    next_sample = time.monotonic() + self.RESOURCE_SAMPLE_SECONDS
+                    try:
+                        self.sample_resources()
+                    except Exception:  # noqa: S110 — telemetry must never stop production
+                        pass
                 try:
                     self.tick()
                 except Exception:  # noqa: S112 — the loop must survive one bad tick; state is durable

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Activity, FolderOpen, HelpCircle, Home, Keyboard, LayoutTemplate, Plus, RotateCcw, Search, Settings } from 'lucide-react';
+import { Activity, Factory, FolderOpen, HelpCircle, Home, Keyboard, LayoutTemplate, Plus, RotateCcw, Search, Settings } from 'lucide-react';
 import { ToastContainer, showToast } from './Toast';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import { CommandPalette, OPEN_PALETTE_EVENT } from './CommandPalette';
@@ -13,6 +13,7 @@ import { BrandMark } from './Brand';
 const NAV = [
   { to: '/home', label: 'Home', icon: Home },
   { to: '/projects', label: 'Projects', icon: FolderOpen, end: false },
+  { to: '/production', label: 'Production', icon: Factory },
   { to: '/activity', label: 'Activity', icon: Activity },
   { to: '/templates', label: 'Templates', icon: LayoutTemplate },
   { to: '/settings', label: 'Settings', icon: Settings },

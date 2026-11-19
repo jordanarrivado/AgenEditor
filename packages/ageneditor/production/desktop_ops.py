@@ -29,6 +29,7 @@ PRODUCTION_OPERATIONS = frozenset(
         "production_list_clients",
         "production_create_client",
         "production_bind_project",
+        "production_project_clients",
         "production_get_profile",
         "production_save_profile",
         "production_list_providers",
@@ -50,6 +51,10 @@ PRODUCTION_OPERATIONS = frozenset(
         "production_retry_task",
         "production_package_delivery",
         "production_costs",
+        "production_metrics",
+        "production_changes",
+        "production_reference_assets",
+        "production_measure_reference",
     }
 )
 
@@ -58,6 +63,32 @@ def _str_list(value: Any) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise EngineException(ErrorCode.INVALID_ARGUMENT, "expected a list of IDs")
     return value
+
+
+#: Longest a UI long-poll may wait; well under the shell's 120 s request timeout.
+MAX_CHANGE_WAIT_MS = 25_000
+
+
+def change_cursor(orchestrator: ProductionOrchestrator) -> str:
+    """Opaque cursor over every project's production state."""
+    from ageneditor.production.common import content_hash
+
+    markers = sorted(f"{p.project_id}:{p.change_marker()}" for p in orchestrator.all_productions())
+    return content_hash(markers)[:24]
+
+
+def wait_for_changes(
+    orchestrator: ProductionOrchestrator, cursor: str | None, wait_ms: int, poll_s: float = 0.4
+) -> dict[str, Any]:
+    """Return as soon as production state differs from ``cursor``, or after ``wait_ms``."""
+    import time
+
+    deadline = time.monotonic() + max(0, min(wait_ms, MAX_CHANGE_WAIT_MS)) / 1000
+    while True:
+        current = change_cursor(orchestrator)
+        if current != cursor or time.monotonic() >= deadline:
+            return {"cursor": current, "changed": cursor is not None and current != cursor}
+        time.sleep(poll_s)
 
 
 def production_call(orchestrator: ProductionOrchestrator, operation: str, args: dict[str, Any]) -> Any:
@@ -112,6 +143,8 @@ def production_call(orchestrator: ProductionOrchestrator, operation: str, args: 
         production = orchestrator.production(str(args["project_id"]))
         registry.bind_project(production.project_id, str(args["client_id"]), production.has_batches())
         return {"project_id": production.project_id, "client_id": str(args["client_id"])}
+    if operation == "production_project_clients":
+        return registry.project_clients()
     if operation == "production_get_profile":
         scope = ProfileScope(str(args.get("scope", "global")))
         return registry.profile(scope, args.get("client_id")).model_dump(mode="json")
@@ -238,4 +271,25 @@ def production_call(orchestrator: ProductionOrchestrator, operation: str, args: 
             for item in production.usage(args.get("batch_id")):
                 rows.append({**item, "project_id": production.project_id})
         return rows
+    if operation == "production_changes":
+        cursor = args.get("cursor")
+        return wait_for_changes(
+            orchestrator, str(cursor) if cursor else None, int(args.get("wait_ms", MAX_CHANGE_WAIT_MS))
+        )
+    if operation == "production_reference_assets":
+        from ageneditor.production.reference_style import reference_assets
+
+        return reference_assets(orchestrator.production(str(args["project_id"])).project)
+    if operation == "production_measure_reference":
+        from ageneditor.production.reference_style import measure_reference
+
+        store = orchestrator.production(str(args["project_id"])).project
+        return [note.model_dump(mode="json") for note in measure_reference(store, str(args["asset_id"]))]
+    if operation == "production_metrics":
+        from ageneditor.production.metrics import batch_metrics
+
+        batch_id = str(args["batch_id"])
+        production = orchestrator.production_for_batch(batch_id)
+        samples = registry.resource_samples(production.batch(batch_id).created_at, orchestrator.clock())
+        return batch_metrics(production, batch_id, samples).model_dump(mode="json")
     raise EngineException(ErrorCode.INVALID_ARGUMENT, "unknown production operation")

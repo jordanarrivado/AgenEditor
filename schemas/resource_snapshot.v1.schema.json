@@ -32,6 +32,20 @@
   "$id": "https://ageneditor.local/schemas/resource_snapshot.v1.json",
   "additionalProperties": false,
   "properties": {
+    "cpu_busy_permille": {
+      "anyOf": [
+        {
+          "maximum": 1000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cpu Busy Permille"
+    },
     "cpu_count": {
       "anyOf": [
         {

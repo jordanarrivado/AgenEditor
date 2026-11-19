@@ -115,4 +115,6 @@ CREATE TABLE IF NOT EXISTS project_clients(
 );
 CREATE TABLE IF NOT EXISTS providers(id TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS resource_samples(measured_at TEXT NOT NULL, data TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS resource_samples_time ON resource_samples(measured_at);
 """

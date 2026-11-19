@@ -12,6 +12,7 @@ describe('routing', () => {
       ['/projects', 'Projects'],
       ['/projects/new', 'New Project'],
       ['/activity', 'Activity'],
+      ['/production', 'Production'],
       ['/templates', 'Templates'],
       ['/settings', 'Settings'],
       ['/help', 'Help & About'],

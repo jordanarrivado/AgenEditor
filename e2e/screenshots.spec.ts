@@ -106,3 +106,16 @@ test('activity, templates, settings, help, 404', async ({ page }) => {
     await shot(page, `${name}-1440x900`);
   }
 });
+
+test('production', async ({ page }) => {
+  await fresh(page);
+  await page.goto('/production');
+  await page.getByRole('heading', { level: 2, name: 'Podcast ep. 12 shorts' }).waitFor();
+  await shot(page, 'production-overview-1440x900');
+  await page.getByRole('tab', { name: /^Review/ }).click();
+  await page.getByText('Sample finding: the second cut lingers.').waitFor();
+  await shot(page, 'production-review-1440x900');
+  await page.getByRole('tab', { name: 'Clients' }).click();
+  await page.getByRole('form', { name: 'Global defaults' }).waitFor();
+  await shot(page, 'production-clients-1440x900');
+});

@@ -139,6 +139,15 @@ class ProductionStore:
             (event_type, aggregate_type, aggregate_id, json.dumps(payload, default=str), ts(self.now())),
         )
 
+    def change_marker(self) -> str:
+        """Cheap value that changes whenever production state does (for UI long-polling)."""
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT (SELECT coalesce(max(seq), 0) FROM production_events), "
+                "(SELECT count(*) FROM batches), (SELECT count(*) FROM clip_candidates)"
+            ).fetchone()
+        return f"{row[0]}.{row[1]}.{row[2]}"
+
     def events(
         self, after_seq: int = 0, limit: int = 200, aggregate_id: str | None = None
     ) -> list[ProductionEvent]:

@@ -57,6 +57,46 @@ def _available_memory() -> int | None:
     return None
 
 
+def _cpu_times() -> tuple[int, int] | None:
+    """Cumulative (idle, total) CPU time in OS ticks, or ``None`` where it cannot be read."""
+    if os.name == "nt":
+        import ctypes
+
+        class FileTime(ctypes.Structure):
+            _fields_ = [("low", ctypes.c_ulong), ("high", ctypes.c_ulong)]
+
+        idle, kernel, user = FileTime(), FileTime(), FileTime()
+        if not ctypes.windll.kernel32.GetSystemTimes(  # type: ignore[attr-defined]
+            ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
+        ):
+            return None
+
+        def value(t: FileTime) -> int:
+            return (t.high << 32) | t.low
+
+        # Kernel time already includes idle time.
+        return value(idle), value(kernel) + value(user)
+    try:
+        fields = Path("/proc/stat").read_text(encoding="utf-8").splitlines()[0].split()
+    except (OSError, IndexError):
+        return None
+    if not fields or fields[0] != "cpu":
+        return None
+    ticks = [int(x) for x in fields[1:]]
+    idle = ticks[3] + (ticks[4] if len(ticks) > 4 else 0)  # idle + iowait
+    return idle, sum(ticks)
+
+
+def busy_permille(previous: tuple[int, int] | None, current: tuple[int, int] | None) -> int | None:
+    """CPU busy share between two (idle, total) readings, in permille."""
+    if previous is None or current is None:
+        return None
+    idle, total = current[0] - previous[0], current[1] - previous[1]
+    if total <= 0 or idle < 0:
+        return None
+    return max(0, min(1000, (total - idle) * 1000 // total))
+
+
 class ResourceManager:
     def __init__(self, config: ResourceConfig, workspace: Path | None = None):
         self._lock = threading.Lock()
@@ -66,6 +106,8 @@ class ResourceManager:
         self._holders: dict[str, set[str]] = {}
         self._calls: dict[str, deque[datetime]] = {}
         self._cooldown: dict[str, datetime] = {}
+        self._cpu_reading: tuple[int, int] | None = None
+        self._cpu_busy: int | None = None
         self.configure(config)
 
     def configure(self, config: ResourceConfig, providers: list[ProviderConfig] | None = None) -> None:
@@ -152,4 +194,13 @@ class ResourceManager:
             memory_total_bytes=total_memory_bytes(),
             memory_available_bytes=_available_memory(),
             disk_free_bytes=disk,
+            cpu_busy_permille=self._cpu_busy,
         )
+
+    def sample(self) -> ResourceSnapshot:
+        """Measure CPU load since the previous sample, then take a full snapshot (for the history)."""
+        reading = _cpu_times()
+        with self._lock:
+            self._cpu_busy = busy_permille(self._cpu_reading, reading)
+            self._cpu_reading = reading
+        return self.snapshot()

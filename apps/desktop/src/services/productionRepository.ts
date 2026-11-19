@@ -65,6 +65,8 @@ export interface ResourceSnapshot {
   memory_total_bytes: number | null;
   memory_available_bytes: number | null;
   disk_free_bytes: number | null;
+  /** CPU busy share since the previous engine sample, in permille; null until measured. */
+  cpu_busy_permille?: number | null;
   measured_at: string;
 }
 export interface RunningWork {
@@ -95,6 +97,9 @@ export interface ProductionClip {
   ordinal: number;
   status: ClipStatus;
   status_reason: string;
+  /** Set once planning finished; clip instructions are fixed from then on. */
+  plan_id?: string | null;
+  instructions?: string;
   current_revision: number | null;
   draft_revision: number | null;
   team_id: string | null;
@@ -170,6 +175,86 @@ export interface ResourceConfig {
 }
 export interface Client { id: string; name: string; status: string }
 
+export type CaptionPreset = 'clean_white' | 'bold_yellow' | 'boxed';
+export type ColorPreset = 'none' | 'natural' | 'warm' | 'cool';
+export type Pacing = 'calm' | 'balanced' | 'fast';
+/** Overridable creative defaults; `null` inherits from the layer above. */
+export interface CreativeDefaults {
+  caption_preset: CaptionPreset | null;
+  color_preset: ColorPreset | null;
+  captions: boolean | null;
+  normalize_audio: boolean | null;
+  pacing: Pacing | null;
+  tone: string | null;
+  platform: string | null;
+}
+export type CreativeField = keyof CreativeDefaults;
+export type ProfileScope = 'global' | 'client';
+export interface DeliveryRules {
+  allow_partial_delivery: boolean;
+  include_captions: boolean;
+  include_project_snapshot: boolean;
+  naming_prefix: string | null;
+}
+/** A versioned instruction layer. Saving appends a new immutable revision. */
+export interface InstructionProfile {
+  schema_version: 1;
+  scope: ProfileScope;
+  client_id: string | null;
+  /** Optimistic-lock counter; 0 means nothing saved yet. */
+  revision: number;
+  creative: CreativeDefaults;
+  instructions: string;
+  required_constraints: string[];
+  locked_creative: CreativeField[];
+  style_observations: { id: string; label: string; value: string; basis: 'measured' | 'estimate' | 'person'; source_asset_id: string | null }[];
+  delivery: DeliveryRules;
+}
+
+export interface DurationStats { samples: number; mean_ms: number | null; p50_ms: number | null; p95_ms: number | null; max_ms: number | null }
+/** Spec §20 indicators for one batch, from engine records only. Empty values were not observed. */
+export interface ProductionMetrics {
+  batch_id: string;
+  measured_at: string;
+  batch_created_at: string;
+  clips_total: number;
+  clips_reached_review: number;
+  clips_approved: number;
+  clips_delivered: number;
+  first_review_ready_ms: number | null;
+  last_approval_ms: number | null;
+  queue_wait: DurationStats;
+  attempt_run: DurationStats;
+  attempts_total: number;
+  attempts_unsuccessful: number;
+  tasks_total: number;
+  tasks_succeeded: number;
+  tasks_failed: number;
+  checkpoint_reuses: number;
+  revision_tasks: number;
+  cost: { measured_micros: number; provider_reported_micros: number; estimated_micros: number; unpriced_requests: number };
+  pressure: ResourcePressure;
+}
+
+/** Machine pressure sampled during the batch (permille of total). */
+export interface ResourcePressure {
+  samples: number;
+  cpu_busy_mean_permille: number | null;
+  cpu_busy_max_permille: number | null;
+  memory_used_mean_permille: number | null;
+  memory_used_max_permille: number | null;
+  memory_available_min_bytes: number | null;
+  disk_free_min_bytes: number | null;
+  pool_peak_in_use: Record<string, number>;
+  pool_full_samples: Record<string, number>;
+}
+
+export type StyleObservation = InstructionProfile['style_observations'][number];
+export interface ReferenceAsset { id: string; name: string; kind: string; duration_us: number | null }
+
+/** Result of a change long-poll: a new cursor, and whether state changed since the one sent. */
+export interface ChangeNotice { cursor: string; changed: boolean }
+
 export interface NewBatch {
   project_id: string;
   name: string;
@@ -194,6 +279,13 @@ export interface ProductionRepository {
   retryTask(taskId: string): Promise<ProductionTask>;
   packageDelivery(batchId: string, clipIds: string[], authorizedBy: string): Promise<DeliveryManifest>;
   costs(batchId?: string): Promise<UsageRow[]>;
+  metrics(batchId: string): Promise<ProductionMetrics>;
+  /** Long-poll: resolves when production state differs from `cursor`, or after about `waitMs`. */
+  waitForChanges(cursor: string | null, waitMs: number): Promise<ChangeNotice>;
+  /** A project's reference files that can be measured for style. */
+  referenceAssets(projectId: string): Promise<ReferenceAsset[]>;
+  /** Measured, source-cited style notes from one reference file (format, shot structure, loudness). */
+  measureReference(projectId: string, assetId: string): Promise<StyleObservation[]>;
   providers(): Promise<ProviderInfo[]>;
   setProviderEnabled(providerId: string, enabled: boolean): Promise<ProviderInfo>;
   resources(): Promise<{ config: ResourceConfig; snapshot: ResourceSnapshot }>;
@@ -201,6 +293,13 @@ export interface ProductionRepository {
   clients(): Promise<Client[]>;
   createClient(name: string): Promise<Client>;
   bindProject(projectId: string, clientId: string): Promise<unknown>;
+  /** Which client each bound project belongs to (`project_id → client_id`). */
+  projectClients(): Promise<Record<string, string>>;
+  getProfile(scope: ProfileScope, clientId?: string | null): Promise<InstructionProfile>;
+  /** Fails with a revision conflict when someone saved since `expectedRevision`. */
+  saveProfile(profile: InstructionProfile, expectedRevision: number): Promise<InstructionProfile>;
+  /** Clip-level instructions; the engine accepts them only until the clip is planned. */
+  setClipInstructions(clipId: string, instructions: string, creative: Partial<CreativeDefaults>): Promise<ProductionClip>;
   /** A playable URL for a verified render on this computer (null in Demo Mode). */
   fileUrl(path: string): string | null;
 }
@@ -230,6 +329,10 @@ export const liveProductionRepository: ProductionRepository = {
     batch_id: batchId, clip_ids: clipIds, authorized_by: authorizedBy,
   }),
   costs: (batchId) => desktop('production_costs', batchId ? { batch_id: batchId } : {}),
+  metrics: (batchId) => desktop('production_metrics', { batch_id: batchId }),
+  waitForChanges: (cursor, waitMs) => desktop('production_changes', { cursor, wait_ms: waitMs }),
+  referenceAssets: (projectId) => desktop('production_reference_assets', { project_id: projectId }),
+  measureReference: (projectId, assetId) => desktop('production_measure_reference', { project_id: projectId, asset_id: assetId }),
   providers: () => desktop('production_list_providers'),
   setProviderEnabled: (providerId, enabled) => desktop('production_set_provider_enabled', { provider_id: providerId, enabled }),
   resources: () => desktop('production_get_resources'),
@@ -237,5 +340,9 @@ export const liveProductionRepository: ProductionRepository = {
   clients: () => desktop('production_list_clients'),
   createClient: (name) => desktop('production_create_client', { name }),
   bindProject: (projectId, clientId) => desktop('production_bind_project', { project_id: projectId, client_id: clientId }),
+  projectClients: () => desktop('production_project_clients'),
+  getProfile: (scope, clientId) => desktop('production_get_profile', clientId ? { scope, client_id: clientId } : { scope }),
+  saveProfile: (profile, expectedRevision) => desktop('production_save_profile', { profile, expected_revision: expectedRevision }),
+  setClipInstructions: (clipId, instructions, creative) => desktop('production_set_clip_instructions', { clip_id: clipId, instructions, creative }),
   fileUrl: (path) => convertFileSrc(path),
 };

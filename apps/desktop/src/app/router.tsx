@@ -38,6 +38,7 @@ export const routes: RouteObject[] = [
           { path: '/projects/:projectId', lazy: page(() => import('../features/project-overview/ProjectOverviewPage'), 'ProjectOverviewPage') },
           { path: '/projects/:projectId/editor', lazy: page(() => import('../features/editor-workspace/EditorPage'), 'EditorPage') },
           { path: '/projects/:projectId/review', lazy: page(() => import('../features/review/ReviewPage'), 'ReviewPage') },
+          { path: '/production', lazy: page(() => import('../features/production/ProductionPage'), 'ProductionPage') },
           { path: '/activity', lazy: page(() => import('../features/activity/ActivityPage'), 'ActivityPage') },
           { path: '/templates', lazy: page(() => import('../features/templates/TemplatesPage'), 'TemplatesPage') },
           { path: '/settings', lazy: page(() => import('../features/settings/SettingsPage'), 'SettingsPage') },

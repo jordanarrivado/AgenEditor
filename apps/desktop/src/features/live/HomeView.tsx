@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, Clapperboard, Plus, Search } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowRight, Clapperboard, Pencil, Plus, Search } from 'lucide-react';
 import type { EngineProject } from '../../services/liveEngineRepository';
 import { Button } from '../../components/ui/primitives';
 
@@ -30,14 +30,28 @@ export interface HomeViewProps {
   onOpen: (projectId: string) => void;
   /** The "Set up this PC" checklist, shown above the projects. */
   setup?: React.ReactNode;
+  /** Renames a project (display name only). */
+  onRename?: (projectId: string, name: string) => Promise<void>;
+  /** Hides or shows a project in the list; nothing is deleted. */
+  onArchive?: (projectId: string, archived: boolean) => Promise<void>;
 }
 
 /** The start screen: every project in this workspace, newest first, and a way to make a new one. */
 export const HomeView: React.FC<HomeViewProps> = ({
-  projects, creating, newName, busy, onNewName, onStartCreate, onCancelCreate, onCreate, onOpen, setup,
+  projects, creating, newName, busy, onNewName, onStartCreate, onCancelCreate, onCreate, onOpen, setup, onRename, onArchive,
 }) => {
   const [query, setQuery] = useState('');
-  const shown = (projects ?? []).filter((project) => project.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const [showArchived, setShowArchived] = useState(false);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const archivedCount = (projects ?? []).filter((project) => project.archived).length;
+  const shown = (projects ?? [])
+    .filter((project) => showArchived || !project.archived)
+    .filter((project) => project.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const submitRename = async () => {
+    if (!renaming || !onRename || !renaming.name.trim()) return;
+    await onRename(renaming.id, renaming.name.trim());
+    setRenaming(null);
+  };
 
   return (
     <main aria-labelledby="home-title" className="min-h-0 flex-1 overflow-y-auto">
@@ -66,6 +80,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </label>
         )}
 
+        {archivedCount > 0 && (
+          <label className="flex items-center gap-2 text-sm text-fg-2">
+            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+            Show archived projects ({archivedCount})
+          </label>
+        )}
+
         {projects === null && <p className="text-sm text-fg-3">Loading projects…</p>}
 
         {projects && projects.length === 0 && (
@@ -79,11 +100,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
         {projects && projects.length > 0 && (
           shown.length === 0
-            ? <p className="text-sm text-fg-3">No project matches “{query.trim()}”.</p>
+            ? <p className="text-sm text-fg-3">{query.trim() ? `No project matches “${query.trim()}”.` : 'All projects are archived.'}</p>
             : (
               <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Projects">
                 {shown.map((project) => (
-                  <li key={project.id}>
+                  <li key={project.id} className="space-y-1.5">
+                    {renaming?.id === project.id ? (
+                      <form className="flex items-center gap-2 rounded-2xl border border-accent/60 bg-surface p-3" onSubmit={(e) => { e.preventDefault(); void submitRename(); }}>
+                        <input autoFocus aria-label={`New name for ${project.name}`} className={`${field} h-9`} maxLength={80} value={renaming.name}
+                          onChange={(e) => setRenaming({ id: project.id, name: e.target.value })} />
+                        <Button variant="primary" type="submit" disabled={busy || !renaming.name.trim()}>Save</Button>
+                        <Button onClick={() => setRenaming(null)}>Cancel</Button>
+                      </form>
+                    ) : (
                     <button type="button" aria-label={`Open ${project.name}`} onClick={() => onOpen(project.id)}
                       className="group flex h-full w-full items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-left transition-colors hover:border-accent/60 hover:bg-elevated">
                       <span aria-hidden className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/12 text-accent"><Clapperboard className="h-5 w-5" /></span>
@@ -96,6 +125,25 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       </span>
                       <ArrowRight aria-hidden className="mt-1 h-4 w-4 shrink-0 text-fg-3 transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
                     </button>
+                    )}
+                    {(onRename || onArchive) && renaming?.id !== project.id && (
+                      <div className="flex items-center gap-1 px-1 text-xs">
+                        {project.archived && <span className="mr-auto text-fg-3">Archived</span>}
+                        {onRename && (
+                          <button type="button" aria-label={`Rename ${project.name}`} className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-fg-3 hover:text-fg" disabled={busy}
+                            onClick={() => setRenaming({ id: project.id, name: project.name })}>
+                            <Pencil aria-hidden className="h-3 w-3" /> Rename
+                          </button>
+                        )}
+                        {onArchive && (
+                          <button type="button" aria-label={`${project.archived ? 'Unarchive' : 'Archive'} ${project.name}`} className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-fg-3 hover:text-fg" disabled={busy}
+                            onClick={() => void onArchive(project.id, !project.archived)}>
+                            {project.archived ? <ArchiveRestore aria-hidden className="h-3 w-3" /> : <Archive aria-hidden className="h-3 w-3" />}
+                            {project.archived ? 'Unarchive' : 'Archive'}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

@@ -65,10 +65,57 @@ Kept current per release (roadmap project management recommendation).
   Agents read it through `get_brief`, but nothing verifies a plan or render against it; the QA `brief_checklist`
   check only reports what a person marked. It is tested with the real store and a real render, and with a mocked
   engine in the UI, not in the packaged app.
-* Known-issue acceptance is recorded per request with a note and is tested with a mocked engine and the real store. Nothing yet reads the log: the delivery note, brief checklist, variants, voice-line requests and preview QA from the proposed flow (roadmap Phase 2c) are not built.
-
-## Engine - Phase Five (beta hardening)
-
+* Known-issue acceptance is recorded per request with a note and is tested with a mocked engine and the real store. The delivery note (Save delivery…) reads the log: accepted issues appear there for every delivered file that uses the accepted asset.
+* Variants (spec §3.5) are tested with the real store, real renders and QA, an MCP round trip and mocked UI tests,
+  not with a live agent session or in the packaged app. A hook change that drops overlays or captions from the
+  opening reports what it dropped, but nothing re-places them. Translated captions are not supported (a language
+  variant can only keep or turn off the source-language captions). Variant finals are rendered by the agent
+  (`start_render(variant_id)`); the desktop app has no render button or QA view per variant, but Save delivery…
+  checks and includes each variant's latest final. A variant cannot be deleted or archived. The desktop Execute lock
+  still waits for every request, including variant-only ones.
+* Preview QA thresholds (flat frame: luma range under 12; bars: picture under 92% of the frame; caption over
+  silence: 75% of the cue below -40 dB) are first guesses, not tuned on real footage. Frames are sampled (6-12),
+  so a problem between samples is missed. Caption sync is measured from sound only. Tested on real renders of
+  synthetic sources and with mocked UI tests; not tried in the packaged app.
+* Estimated word times (`timing: "estimated"`) are a syllable-weighted share of the time around them, not a
+  measurement. They keep speech in the transcript that used to be dropped, but captions and cuts on those words can
+  be off; QA and plan validation warn. Not tested on a real recording in a language without word alignment.
+* Phase 6 finishing (caption templates, speech repair, B-roll colour matching) uses fixed settings that were
+  checked only on synthetic test media: speech repair against white noise, colour matching against flat grey frames.
+  Neither has been judged by a person on real footage. Colour matching uses average brightness and tint, not a full
+  colour transfer.
+* Editor presets carry finishing settings only (no cuts). The project's chosen preset is applied by the agent, not by
+  the app. Delivery (Save delivery…) and project rename/archive are covered by engine, Rust and mocked UI tests; the
+  native folder picker and file copy have not been tried in the packaged app. The delivery note lists only what the
+  project recorded (accepted issues, checks, AI-generated labels), is written in English, and is not a content
+  review.
+* OpenTimelineIO: exported files pass the reference `opentimelineio` 0.18.1 parser and round-trip through its
+  serializer; AgenEditor also imports a timeline authored by that library. They have not been opened by another
+  editor. Captions, gain, fades and crops travel only as AgenEditor metadata; other editors will ignore them. Import
+  accepts only media already registered in the project and does not import captions.
+* Reframing suggestions follow where the picture has detail and movement, not faces; a busy background or a
+  second moving subject can pull the suggestion away from the speaker. Tested only on synthetic shapes.
+* Built-in chat ("Your API key"): no request has been sent to Anthropic, OpenAI or Google; provider request and
+  reply shapes follow their public APIs and are tested with canned responses. The Claude request and reply also pass
+  through the official SDK against a local mock HTTP transport. The Claude provider uses the
+  optional `anthropic` SDK (`uv sync --extra ai` for source installs); the Windows sidecar build now includes it, and
+  the executable was built locally and inspected for Anthropic modules. Keys are kept in Windows Credential
+  Manager; that code path is exercised only with an in-memory stand-in in tests. Evidence is capped at 1,500
+  transcript words, so long recordings are planned from their opening only (the model is told). Chat can propose
+  whole cut plans only, not finishing changes or revision patches.
+* macOS and Linux: the code paths are portable and a CI job is set up to check them, but nothing has run on either
+  system and no package is produced. Saved API keys for the built-in chat need Windows Credential Manager.
+* Review notes on approved files are optional free text that agents are told to follow. Nothing verifies that the
+  file or the edit matches a note. Tested with the real store, the desktop bridge and mocked UI tests only.
+* Voice lines (track A4, role `voice`): nothing checks that a generated voice says the requested words; the card
+  asks the person to listen before approving. Voice lines are not transcribed, so they get no captions. A voice-over
+  the person recorded themselves can be placed by an agent, but the Assets box still imports any audio file as
+  music; only a voice-line request card imports as `voice`. The `voice_over_speaker` QA flag only knows each V1
+  clip's gain, not whether someone is talking at that moment. Tested with real FFmpeg renders and mocked UI tests;
+  not tried in the packaged app.
+* Music ducking uses fixed defaults (-30 dB threshold, ratio 8). In engine tests a speech-level voice line
+  (about -15 dBFS) pulls the music bed down by more than 10 dB; the strength depends on how loud the speech is, and
+  it has not been tuned or checked by ear on real footage.
 * The release workflow builds test artifacts; publication and draft-release creation are blocked by
   `docs/release-status.json`. GitHub Actions has not been run. Optional installer signing is configured
   but has not been tested with a certificate.

@@ -12,19 +12,24 @@ use std::time::Instant;
 use tauri::{Emitter, Manager};
 
 use crate::usage::{self, UsageSlot};
-use crate::{engine_cli, AgentSlot, RunningAgent, Sessions, AGENT_TIMEOUT, MAX_PROMPT_CHARS};
+use crate::{engine_cli, exe, AgentSlot, RunningAgent, Sessions, AGENT_TIMEOUT, MAX_PROMPT_CHARS};
 
 /// Finds the native Claude Code executable (standalone install or the npm package's binary).
 pub fn find_claude() -> Option<PathBuf> {
     let mut candidates = Vec::new();
+    let claude = exe("claude");
     if let Some(path) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&path) {
-            candidates.push(dir.join("claude.exe"));
-            candidates.push(dir.join("node_modules/@anthropic-ai/claude-code/bin/claude.exe"));
+            candidates.push(dir.join(&claude));
+            candidates.push(
+                dir.join("node_modules/@anthropic-ai/claude-code/bin")
+                    .join(&claude),
+            );
         }
     }
-    if let Some(profile) = std::env::var_os("USERPROFILE") {
-        candidates.push(PathBuf::from(profile).join(".local/bin/claude.exe"));
+    // The standalone installer puts it in ~/.local/bin on every platform.
+    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
+        candidates.push(PathBuf::from(home).join(".local/bin").join(&claude));
     }
     candidates.into_iter().find(|candidate| candidate.is_file())
 }
@@ -57,6 +62,8 @@ const EDIT_TOOLS: &[&str] = &[
     "revert_revision",
     "set_asset_labels",
     "add_sound_effect",
+    "update_variant",
+    "apply_editor_preset",
     "cancel_job",
 ];
 
@@ -130,8 +137,19 @@ render or add sounds are switched off in this stage.
        movement between them, and give the duration (4 to 8 seconds) and aspect ratio.
     Tell the user the storyboard must be generated and approved first, and that the storyboard
     picture is then attached in Flow with the Flow prompt.
+  - Voice lines: only when the user asks for a voice-over or narration the footage does not have.
+    The user makes the audio in Google AI Studio (Gemini speech generation). Give each line an id
+    (voice_01...), the exact words to say, and a short voice direction (tone, pace, accent); never
+    ask for a real person's voice. Place it later on track A4 with role voice; music ducks under it.
+  - Variants: only when the user asks for alternative versions (another hook, another language,
+    localized shots). The main edit stays the shared body; each variant is a set of overrides on it
+    (a replacement hook, asset swaps, captions off). Create each one now with create_variant (it
+    starts identical to the main edit; Execute fills it in) and describe its overrides in the plan.
+    A file only one variant needs gets "variant_id": "<that variant's id>" in its request.
   - Then add one fenced json block, using only these fields:
-    {"asset_requests": [{"id", "kind" (image or video), "purpose", "prompt", "aspect"}]}.
+    {"asset_requests": [{"id", "kind" (image, video or audio), "purpose", "prompt", "aspect",
+    "line" (audio only), "variant_id" (optional)}]}. Voice line: kind audio, line = the exact words, prompt = the voice
+    direction.
     Image request: kind image, prompt = the ChatGPT prompt. Video shot: first an image request
     with id "<shot id>_storyboard", kind image, purpose "storyboard for <shot id>", prompt = the
     ChatGPT storyboard prompt; then a video request with id "<shot id>", kind video, prompt = the
@@ -153,6 +171,17 @@ render or add sounds are switched off in this stage.
                 r#"Current stage: EXECUTE (Claude Sonnet 5.5). Carry out the latest plan and any review notes
 from earlier in this conversation exactly, with the user's prompt taking priority. If there is no
 plan, make a sensible edit from the prompt.
+   Read get_asset_checklist: each approved file may have a person's note in review_notes (for
+   example "use only the first 3 seconds"); follow it when you place that file.
+   If the person asks to keep the speaker in frame (or wide footage is cropped to vertical), call
+   suggest_reframe and apply only confident suggestions with apply_revision set_transform; it is a
+   detail/motion heuristic, not face detection, so say so and ask them to check the preview.
+   Call list_editor_presets with the project ID: if "chosen" is set, apply that preset with
+   apply_editor_preset after your cut is committed (it changes captions, colour and audio only).
+   When the preview succeeds, call run_preview_qa on it and fix any warning that is a real problem
+   before a final render; say which warnings you left and why.
+   If the plan has variants, finish the main edit first, then call update_variant for each
+   (expected_revision = its current revision) and render it with start_render and variant_id.
 4. Read get_timeline, then commit_timeline with expected_revision set to the current revision.
    Give every clip a short rationale. Originals are never modified; each commit is a new revision.
 5. After committing, call start_render with final=false to make a preview, and poll
@@ -163,9 +192,11 @@ plan, make a sensible edit from the prompt.
             Self::Review => {
                 r#"Current stage: REVIEW (Claude Opus 5.5). You check the edit; you do not change it. Tools that
 commit or add sounds are switched off in this stage.
-- Do steps 1-3, then read get_timeline (and diff_timeline against the previous revision).
+- Do steps 1-3, then read get_timeline (and diff_timeline against the previous revision), and
+  get_asset_checklist: check that each approved file is used as its review_notes say.
 - If the current revision has no successful preview, call start_render with final=false and
-  poll get_job_status. If a final render of it exists, call run_qa and use the measured results.
+  poll get_job_status. Call run_preview_qa on the preview and report its warnings. If a final
+  render of it exists, call run_qa and use the measured results.
 - You cannot see or hear renders. Judge from the timeline, transcript words, the brief and
   measured QA only, and say so if a point needs the user's eyes or ears.
 - Reply with what works in one line, then numbered notes: each a concrete, fixable change

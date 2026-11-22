@@ -69,7 +69,7 @@ The UI and MCP bridge **must share the same project model, service layer, permis
 | Step | Who | What |
 |---|---|---|
 | Plan | Claude Opus 5.5 (high effort) | Source-cited edit decision list **plus** an `asset_requests` JSON block: one entry per storyboard frame or B-roll shot that the footage lacks (`id`, `kind` image/video, `purpose`, `prompt`, `aspect`). |
-| Prepare assets | External tools, run by the user | Image requests go to ChatGPT by default, to Gemini if ChatGPT is out of quota; video requests go to Google Flow (MCP when a connector exists, otherwise copy-paste). AgenEditor shows a one-click checklist with "Copy for ChatGPT / Gemini / Flow" per request and a "Generate storyboard" entry. |
+| Prepare assets | External tools, run by the user | Image requests go to ChatGPT by default, to Gemini if ChatGPT is out of quota; video requests go to Google Flow (MCP when a connector exists, otherwise copy-paste). Voice-line (audio) requests go to Google AI Studio's speech generation (copy-paste). AgenEditor shows a one-click checklist with "Copy for ChatGPT / Gemini / Flow" per request and a "Generate storyboard" entry. |
 | Gate | AgenEditor | Execute stays locked until every request is imported and marked ready (or explicitly dropped). |
 | Execute | Claude Sonnet 5.5 (high effort) | Carries out the EDL through MCP tools, using only registered assets. |
 | Review | Claude Opus 5.5 (high effort) | Checks the cut and measured QA against the brief; sends notes back to Execute. |
@@ -85,7 +85,10 @@ render; Review may render a preview and run QA). With an empty prompt, Execute a
 project's request list and shows a **B-roll to make** card for each request under the preview. Images are made in
 ChatGPT. An AI video is two requests: a storyboard image (`<shot>_storyboard`, one grid of 4–6 numbered frames, made
 in ChatGPT and kept as a reference, never cut into the edit) and the video itself (made in Google Flow with the
-approved storyboard attached). Each card has **Copy prompt & open ChatGPT / Google Flow** (the clipboard gets the
+approved storyboard attached). A voice line (`kind: "audio"`, added 2026-11-21) carries the exact words in `line`
+and a voice direction as its prompt; it is made in Google AI Studio (Gemini speech generation), imported with the
+`voice` role and placed on track A4, where music ducks under it. Each card has **Copy prompt & open ChatGPT / Google
+Flow / Google AI Studio** (the clipboard gets the
 prompt and the browser opens the site; nothing is sent by AgenEditor), a drop zone or **Browse**, a preview, and
 **Approve**, **Redo**, **Replace file** and **Skip · edit without it**. A dropped file is imported as `broll` (or
 `reference` for storyboards), labelled `generated-external` with the tool name, and linked to that request. A file
@@ -156,6 +159,67 @@ shown as a recommendation; the brief changes only if the user chooses **Use this
 stated requirement, adds none, keeps the later of two conflicting notes and marks vague ones as unclear.
 
 **Out of scope:** in-app generation of images/video/music/voices, multicamera editing, advanced motion graphics, full NLE-style realtime frame-accurate playback, collaborative workspaces, subscriptions, stock-asset search, cloud media hosting, timeline interop guarantees with Premiere Pro or DaVinci Resolve.
+
+### 3.5 Variants (added 2026-11-21)
+
+A variant is another version of the main edit: a different hook, another language, or localized shots. It does
+not copy the main timeline. It stores overrides, and its timeline is computed from the main edit's current revision
+every time, so edits to the shared body reach every variant:
+
+* **Hook:** `hook_replaces_clips` leading V1 clips of the main edit are replaced by `hook_clips`, laid out from frame
+  0. Everything after the hook moves by the length difference. Overlays and captions that started inside the
+  replaced hook are left out (a music bed on A2 keeps playing); the new hook gets captions built from its own
+  transcript words when the main edit has captions and a transcript exists.
+* **Asset swaps:** an overlay asset (V2, A2, A3, A4) is replaced by another registered asset: a localized shot, or a
+  voice line in another language.
+* **Hook overlays:** extra overlays placed in the variant's own output time.
+* **Captions:** `keep` or `off` (translated captions are not supported).
+
+Variant revisions are immutable and versioned (`update_variant` with `expected_revision`); an update is refused if
+the result does not validate against the current main edit. A request with `variant_id` in the asset checklist
+gates only that variant: the main edit can commit and render while it is pending, the variant cannot render. A
+variant render pins the main revision and the variant revision (`Job.variant_id`, `variant_revision`), and QA
+measures it against the computed variant timeline. MCP tools: `list_variants`, `create_variant` (allowed in the
+Plan stage; it changes nothing), `update_variant` (an edit tool), `get_variant`, and `start_render` with
+`variant_id`. The desktop app lists variants read-only with their status and latest preview; Claude creates and
+changes them.
+
+### 3.6 Preview QA (added 2026-11-21)
+
+Before the final render, `run_preview_qa` (MCP) or **Check this preview** (desktop) measures the finished preview:
+size, frame rate and length against its timeline; a frame grid of each clip's middle frame with black or blank
+frames flagged; black bars where a clip should fill the frame; captions shown while the audio is silent. All
+checks are measured on the file with FFmpeg and only warn; nothing is blocked. The person looks at the frame grid;
+agents cannot see it and are told so.
+
+### 3.7 Finishing, presets and project management (added 2026-11-21)
+
+Caption templates: `clean_white`, `bold_yellow`, `boxed`, `top_clean`, `big_center`, `lower_minimal` (all enumerated
+ASS styles; never free-form). `AudioMix.speech_repair` (`none`/`light`/`strong`) runs a fixed clean-up chain on the
+speech bus before ducking. `Timeline.broll_color_match` moves B-roll halfway toward the primary footage's average
+brightness and tint, bounded. Editor presets (workspace-wide) hold these finishing settings; a person saves and picks
+them, and the agent applies the picked one as a normal revision. Projects can be renamed and archived.
+
+**Delivery** (Save delivery…): every final (main and each variant's latest) is checked, and those that pass are saved
+into a new folder outside the workspace under client file names
+(`<Client>_<Project>_<Main|Variant>_<9x16>_<40s>_r<revision>[v<variant revision>]`, ASCII only), each with its SRT
+when there is one, plus `known_issues.md`. The note is built only from the project's records: issues the person
+accepted, QA checks that did not pass, warnings from the preview check of the same edit, and the
+`AI-generated (external)` labels from QA. It says that it is not a full review. The engine chooses the names and
+writes the note (`delivery_plan`); the page supplies only the job IDs and the client name, which the project
+remembers. Nothing is sent anywhere.
+
+### 3.8 Interchange, reframing, built-in chat and timeline view (added 2026-11-21)
+
+* **OpenTimelineIO:** Export .otio… / `export_otio` writes the current revision as OTIO JSON; Import .otio… builds a
+  validated candidate from an OTIO file whose media is already registered and commits it as a new revision.
+  Interchange with other editors is not verified.
+* **Reframing suggestions:** `suggest_reframe` proposes crop centres from where the picture has detail and movement
+  (not face detection); the agent applies confident ones as `set_transform`.
+* **Built-in chat ("Your API key"):** the person's own Anthropic, OpenAI or Gemini key (Windows Credential Manager),
+  allowed per project after seeing what text is sent. The model can propose a cut plan; AgenEditor validates it and
+  only Apply commits it. Claude Code remains the default assistant.
+* **Timeline view:** a read-only multitrack view under the preview whose playhead follows the rendered preview.
 
 ## 3. Final technology decisions
 

@@ -175,7 +175,7 @@ export interface ResourceConfig {
 }
 export interface Client { id: string; name: string; status: string }
 
-export type CaptionPreset = 'clean_white' | 'bold_yellow' | 'boxed';
+export type CaptionPreset = 'clean_white' | 'bold_yellow' | 'boxed' | 'top_clean' | 'big_center' | 'lower_minimal';
 export type ColorPreset = 'none' | 'natural' | 'warm' | 'cool';
 export type Pacing = 'calm' | 'balanced' | 'fast';
 /** Overridable creative defaults; `null` inherits from the layer above. */

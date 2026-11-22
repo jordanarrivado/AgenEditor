@@ -58,7 +58,10 @@ class SetClipAudio(ContractModel):
 
 
 class AddOverlay(ContractModel):
-    """Place a registered B-roll (V2), music (A2) or sound-effect (A3) asset. V1 uses plans and trims."""
+    """Place a registered B-roll (V2), music (A2), sound-effect (A3) or voice-line (A4) asset.
+
+    V1 uses plans and trims.
+    """
 
     op: Literal["add_overlay"] = "add_overlay"
     clip: Clip
@@ -93,6 +96,8 @@ class SetCaptionPreset(ContractModel):
 class SetColorPreset(ContractModel):
     op: Literal["set_color_preset"] = "set_color_preset"
     preset: ColorPreset
+    #: When set, also turns B-roll colour matching on or off.
+    broll_color_match: bool | None = None
 
 
 class SetAudioMix(ContractModel):

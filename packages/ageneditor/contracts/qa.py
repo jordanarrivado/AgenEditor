@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import Field, computed_field
 
-from .common import ContractModel, Identifier, utcnow
+from .common import ContractModel, Identifier, ProjectRelativePath, utcnow
 
 
 class CheckStatus(StrEnum):
@@ -61,3 +61,31 @@ class QAReport(ContractModel):
         if any(c.status in {CheckStatus.WARN, CheckStatus.SKIPPED, CheckStatus.FAIL} for c in self.checks):
             return CheckStatus.WARN
         return CheckStatus.PASS
+
+
+class PreviewQAReport(ContractModel):
+    """Checks measured on a finished (usually preview) render before the final render (roadmap Phase 2c).
+
+    Warnings only: preview QA points a person or agent at likely problems and never blocks a render. Every
+    check is measured on the rendered file; ``frame_grid_path`` is a contact sheet of the sampled frames.
+    """
+
+    schema_version: Literal[1] = 1
+    id: Identifier
+    job_id: Identifier
+    project_id: Identifier
+    timeline_revision: int = Field(ge=0)
+    variant_id: Identifier | None = Field(default=None, exclude_if=lambda value: value is None)
+    variant_revision: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
+    #: Output frame numbers that were sampled, in order (also the grid's reading order).
+    frames: list[int] = Field(default_factory=list, max_length=12)
+    frame_grid_path: ProjectRelativePath | None = None
+    checks: list[QACheck]
+    created_at: datetime = Field(default_factory=utcnow)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def overall(self) -> CheckStatus:
+        """WARN if any check warned; otherwise PASS. Skipped checks are listed but do not warn."""
+        warned = any(c.status is CheckStatus.WARN for c in self.checks)
+        return CheckStatus.WARN if warned else CheckStatus.PASS

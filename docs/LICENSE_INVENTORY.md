@@ -2,7 +2,7 @@
 
 > **Phase 5:** the authoritative, generated list of what a Windows build redistributes, including native
 > DLLs inside Python wheels, is [`LICENSE_REPORT.md`](LICENSE_REPORT.md)
-> (`uv run python scripts/license_report.py --out docs/LICENSE_REPORT.md`). Record decisions for flagged
+> (`uv run --extra transcribe --extra ai python scripts/license_report.py --out docs/LICENSE_REPORT.md`). Record decisions for flagged
 > items in `docs/license-decisions.json` (`{"<component>": "<decision and reason>"}`); the release
 > workflow fails while any are pending. The tables below are the hand-written overview.
 
@@ -37,6 +37,7 @@ generated report and recorded decisions are authoritative (`docs/LICENSE_REPORT.
 | PyAV (`av`) | BSD-3-Clause | Wheel bundles FFmpeg libraries reported as LGPL-3.0+, **plus `libx264`/`libx265` DLLs (GPL-2.0+)**. Development only: **excluded from the packaged engine** (`--exclude-module av`); the engine decodes audio with the separate `ffmpeg.exe`. |
 | Whisper model weights (Systran faster-whisper conversions) | MIT (OpenAI Whisper) | Downloaded by the user with `cache-model`; not bundled |
 | mcp | MIT | MCP SDK |
+| anthropic | MIT | Bundled SDK for the optional Claude chat provider (`ai` extra in desktop builds) |
 | tqdm (via faster-whisper/huggingface-hub) | MPL-2.0 AND MIT | Weak copyleft: unmodified redistribution is fine; flagged for an explicit decision |
 
 ## Desktop UI (Node) — runtime

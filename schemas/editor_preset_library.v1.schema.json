@@ -1,0 +1,161 @@
+{
+  "$defs": {
+    "AudioMix": {
+      "additionalProperties": false,
+      "description": "Bounded mix settings compiled into fixed FFmpeg filters (spec \u00a710 audio target).",
+      "properties": {
+        "duck_attack_ms": {
+          "default": 20,
+          "maximum": 2000,
+          "minimum": 1,
+          "title": "Duck Attack Ms",
+          "type": "integer"
+        },
+        "duck_music": {
+          "default": true,
+          "title": "Duck Music",
+          "type": "boolean"
+        },
+        "duck_ratio": {
+          "default": 8.0,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Duck Ratio",
+          "type": "number"
+        },
+        "duck_release_ms": {
+          "default": 400,
+          "maximum": 9000,
+          "minimum": 10,
+          "title": "Duck Release Ms",
+          "type": "integer"
+        },
+        "duck_threshold_db": {
+          "default": -30.0,
+          "maximum": -6,
+          "minimum": -60,
+          "title": "Duck Threshold Db",
+          "type": "number"
+        },
+        "edge_fade_ms": {
+          "default": 12,
+          "maximum": 200,
+          "minimum": 0,
+          "title": "Edge Fade Ms",
+          "type": "integer"
+        },
+        "normalize": {
+          "default": true,
+          "title": "Normalize",
+          "type": "boolean"
+        },
+        "speech_repair": {
+          "default": "none",
+          "enum": [
+            "none",
+            "light",
+            "strong"
+          ],
+          "title": "Speech Repair",
+          "type": "string"
+        }
+      },
+      "title": "AudioMix",
+      "type": "object"
+    },
+    "CaptionPreset": {
+      "description": "Enumerated burn-in styles (two lines max, phone-safe margins). Never free-form ASS/filters.",
+      "enum": [
+        "clean_white",
+        "bold_yellow",
+        "boxed",
+        "top_clean",
+        "big_center",
+        "lower_minimal"
+      ],
+      "title": "CaptionPreset",
+      "type": "string"
+    },
+    "ColorPreset": {
+      "description": "Fixed, gentle grade presets applied after compositing. ``none`` leaves pixels untouched.",
+      "enum": [
+        "none",
+        "natural",
+        "warm",
+        "cool"
+      ],
+      "title": "ColorPreset",
+      "type": "string"
+    },
+    "EditorPreset": {
+      "additionalProperties": false,
+      "description": "Caption template, colour and audio settings; never cuts, clips or media.",
+      "properties": {
+        "audio": {
+          "$ref": "#/$defs/AudioMix"
+        },
+        "broll_color_match": {
+          "default": false,
+          "title": "Broll Color Match",
+          "type": "boolean"
+        },
+        "caption_preset": {
+          "$ref": "#/$defs/CaptionPreset",
+          "default": "clean_white"
+        },
+        "color_preset": {
+          "$ref": "#/$defs/ColorPreset",
+          "default": "none"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 60,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "EditorPreset",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/editor_preset_library.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "presets": {
+      "items": {
+        "$ref": "#/$defs/EditorPreset"
+      },
+      "maxItems": 50,
+      "title": "Presets",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "version": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "title": "EditorPresetLibrary",
+  "type": "object"
+}

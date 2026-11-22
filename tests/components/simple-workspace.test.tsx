@@ -4,9 +4,9 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { SimpleWorkspace } from '../../apps/desktop/src/features/live/SimpleWorkspace';
 
 const engine = vi.hoisted(() => Object.fromEntries([
-  'listProjects', 'summary', 'timeline', 'getBrief', 'saveBrief', 'listJobs', 'connection', 'createProject',
+  'listProjects', 'summary', 'timeline', 'getBrief', 'saveBrief', 'listJobs', 'listVariants', 'connection', 'createProject',
   'importFiles', 'importDroppedFiles', 'onMediaDropped', 'onAgentEvent', 'runAgent', 'stopAgent',
-  'newAgentConversation', 'polishInstructions', 'removeAsset', 'claudeUsage', 'refreshClaudeUsage', 'onClaudeUsage', 'getChecklist', 'saveChecklist', 'linkChecklistAsset', 'approveChecklistRequest', 'resetChecklistRequest', 'replaceChecklistAsset', 'openGenerator', 'assetUrl', 'importMedia', 'importDroppedMedia', 'claudeStatus', 'speechModelStatus', 'installClaudeCode', 'openClaudeSignIn', 'listSoundPacks', 'listSoundCatalog', 'listTransitionStyles', 'mediaUrl', 'startRender', 'runQA', 'saveExport', 'cacheModel',
+  'newAgentConversation', 'polishInstructions', 'removeAsset', 'claudeUsage', 'refreshClaudeUsage', 'onClaudeUsage', 'getChecklist', 'saveChecklist', 'linkChecklistAsset', 'approveChecklistRequest', 'resetChecklistRequest', 'replaceChecklistAsset', 'openGenerator', 'assetUrl', 'importMedia', 'importDroppedMedia', 'claudeStatus', 'speechModelStatus', 'installClaudeCode', 'openClaudeSignIn', 'listSoundPacks', 'listSoundCatalog', 'listTransitionStyles', 'mediaUrl', 'previewQA', 'listEditorPresets', 'projectSettings', 'renameProject', 'setProjectArchived', 'saveDelivery', 'chooseEditorPreset', 'saveEditorPreset', 'deleteEditorPreset', 'exportOtio', 'importOtio', 'startRender', 'runQA', 'saveExport', 'cacheModel',
 ].map((name) => [name, vi.fn()])));
 
 vi.mock('../../apps/desktop/src/services/liveEngineRepository', () => ({ liveEngineRepository: engine }));
@@ -33,6 +33,10 @@ beforeEach(() => {
   engine.getBrief.mockResolvedValue(brief);
   engine.saveBrief.mockImplementation(async (_id, next) => ({ ...brief, ...next, version: 2 }));
   engine.listJobs.mockResolvedValue([]);
+  engine.listVariants.mockResolvedValue([]);
+  engine.previewQA.mockResolvedValue({ report: null, gridUrl: null });
+  engine.listEditorPresets.mockResolvedValue({ version: 0, presets: [] });
+  engine.projectSettings.mockResolvedValue({ archived: false, editor_preset_id: null });
   engine.listSoundPacks.mockResolvedValue([]);
   engine.listSoundCatalog.mockResolvedValue([]);
   engine.claudeStatus.mockResolvedValue({ installed: true, version: '2.1.318 (Claude Code)', signed_in: true, plan: 'team', method: 'claude.ai' });
@@ -446,5 +450,67 @@ describe('simple workspace', () => {
     fireEvent.click(save);
     expect(await screen.findByText('Technical check: fail')).toBeInTheDocument();
     expect(engine.saveExport).not.toHaveBeenCalled();
+  });
+
+  it('imports an .otio file only after a second click, and reports a refusal without changing the edit', async () => {
+    engine.timeline.mockResolvedValue({ revision: 2 });
+    engine.importOtio.mockResolvedValueOnce({ committed_revision: null, clip_count: 0, issues: [{ code: 'INVALID_TIMELINE', message: 'clip "x" uses media that is not registered in this project', severity: 'error' }] })
+      .mockResolvedValueOnce({ committed_revision: 3, clip_count: 4, issues: [{ code: 'INVALID_TIMELINE', message: 'captions were not imported', severity: 'warning' }] });
+    await openProject();
+    const button = await screen.findByRole('button', { name: 'Import .otio…' });
+    fireEvent.click(button);
+    expect(engine.importOtio).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace the cut? Click again' }));
+    expect(await screen.findByText(/The timeline was not imported: clip "x" uses media that is not registered/)).toBeInTheDocument();
+    expect(engine.importOtio).toHaveBeenCalledWith('project_a', 2);
+    fireEvent.click(screen.getByRole('button', { name: 'Import .otio…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replace the cut? Click again' }));
+    expect(await screen.findByText(/Imported 4 clips as revision 3. captions were not imported/)).toBeInTheDocument();
+  });
+
+  it('saves a delivery: every final that passes its check, under the client name, with a known-issues note', async () => {
+    engine.listJobs.mockResolvedValue([
+      { id: 'job_main', kind: 'final_render', status: 'succeeded', progress: 1, timeline_revision: 2 },
+      { id: 'job_hook', kind: 'final_render', status: 'succeeded', progress: 1, timeline_revision: 2, variant_id: 'variant_a', variant_revision: 3 },
+      { id: 'job_es', kind: 'final_render', status: 'succeeded', progress: 1, timeline_revision: 2, variant_id: 'variant_b', variant_revision: 1 },
+    ]);
+    const variant = (id: string, name: string, revision: number) => ({
+      variant: { id, name, kind: 'hook', language: null, note: '', revision }, main_revision: 2, duration_frames: 90,
+      renderable: true, errors: [], warnings: [], pending_requests: [],
+    });
+    engine.listVariants.mockResolvedValue([variant('variant_a', 'Hook B', 3), variant('variant_b', 'Spanish', 1)]);
+    engine.projectSettings.mockResolvedValue({ archived: false, editor_preset_id: null, client_name: 'Acme' });
+    engine.runQA.mockImplementation(async (_p: string, jobId: string) => ({ overall: jobId === 'job_es' ? 'fail' : 'pass', checks: [], generated_assets: [] }));
+    engine.saveDelivery.mockResolvedValue({
+      folder: 'C:/out/Acme_Teaser_delivery_20261122', note: 'C:/out/Acme_Teaser_delivery_20261122/known_issues.md', excluded: [],
+      files: [
+        { job_id: 'job_main', name: 'Acme_Teaser_Main_9x16_3s_r2', saved: ['C:/out/Acme_Teaser_delivery_20261122/Acme_Teaser_Main_9x16_3s_r2.mp4'] },
+        { job_id: 'job_hook', name: 'Acme_Teaser_HookB_9x16_3s_r2v3', error: 'render is not complete' },
+      ],
+    });
+    await openProject();
+    fireEvent.click(await screen.findByRole('button', { name: /Save delivery/ }));
+    const form = within(await screen.findByRole('form', { name: 'Save delivery' }));
+    const client = form.getByLabelText(/Client name/);
+    expect(client).toHaveValue('Acme');
+    expect(engine.runQA).not.toHaveBeenCalled();
+    fireEvent.change(client, { target: { value: ' Acme Co ' } });
+    fireEvent.click(form.getByRole('button', { name: 'Choose folder…' }));
+    await waitFor(() => expect(engine.saveDelivery).toHaveBeenCalledWith('project_a', ['job_main', 'job_hook'], 'Acme Co'));
+    expect(engine.runQA).toHaveBeenCalledTimes(3);
+    expect(await screen.findByText(/Saved 1 of 3 finals with a known-issues note in C:\/out\/Acme_Teaser_delivery_20261122. Not saved \(technical check failed\): Spanish. Errors: Acme_Teaser_HookB_9x16_3s_r2v3: render is not complete/)).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Save delivery' })).toBeNull();
+  });
+
+  it('offers a delivery with only the main final, and cancelling saves nothing', async () => {
+    engine.listJobs.mockResolvedValue([{ id: 'job_main', kind: 'final_render', status: 'succeeded', progress: 1, timeline_revision: 2 }]);
+    await openProject();
+    fireEvent.click(await screen.findByRole('button', { name: /Save delivery/ }));
+    const form = within(await screen.findByRole('form', { name: 'Save delivery' }));
+    expect(form.getByLabelText(/Client name/)).toHaveValue('');
+    expect(form.getByText(/Main edit · each is checked first/)).toBeInTheDocument();
+    fireEvent.click(form.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('form', { name: 'Save delivery' })).toBeNull();
+    expect(engine.saveDelivery).not.toHaveBeenCalled();
   });
 });

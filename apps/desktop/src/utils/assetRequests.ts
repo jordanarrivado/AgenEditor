@@ -2,10 +2,13 @@
  * Asset preparation hand-off (spec §3.1). The planner lists visuals the footage
  * lacks as `asset_requests`; the user generates them in an EXTERNAL tool and
  * imports the files. AgenEditor never calls a generator itself.
+ *
+ * Voice lines (`kind: "audio"`) carry the exact words to be spoken in `line`; the prompt is the text the
+ * person pastes into the speech tool (the line plus voice direction).
  */
 
-export type AssetRequestKind = 'image' | 'video';
-export type Generator = 'chatgpt' | 'gemini' | 'flow';
+export type AssetRequestKind = 'image' | 'video' | 'audio';
+export type Generator = 'chatgpt' | 'gemini' | 'flow' | 'aistudio';
 
 export interface AssetRequest {
   id: string;
@@ -13,7 +16,13 @@ export interface AssetRequest {
   purpose: string;
   prompt: string;
   aspect: string;
+  /** Voice lines only: the exact words the voice must say. */
+  line?: string | null;
+  /** Set when only one variant needs the file; it then gates only that variant. */
+  variant_id?: string | null;
 }
+
+export const MAX_LINE_LENGTH = 1000;
 
 export type AssetRequestStatus = 'pending' | 'ready' | 'dropped';
 
@@ -21,11 +30,13 @@ export const GENERATOR_LABEL: Record<Generator, string> = {
   chatgpt: 'ChatGPT',
   gemini: 'Gemini',
   flow: 'Google Flow',
+  aistudio: 'Google AI Studio',
 };
 
-/** Image → ChatGPT by default (Gemini if out of quota); video → Google Flow. */
+/** Image → ChatGPT by default (Gemini if out of quota); video → Google Flow; voice → Google AI Studio speech. */
 export function generatorsFor(kind: AssetRequestKind): Generator[] {
-  return kind === 'image' ? ['chatgpt', 'gemini'] : ['flow'];
+  if (kind === 'image') return ['chatgpt', 'gemini'];
+  return kind === 'audio' ? ['aistudio'] : ['flow'];
 }
 
 export const ASSET_REQUEST_FORMAT = `{"asset_requests": [{"id": "gen_storyboard_01", "kind": "image", "purpose": "hook frame", "prompt": "...", "aspect": "9:16"}]}`;
@@ -78,7 +89,12 @@ export function parseAssetRequests(text: string): ParseResult {
     const where = `Request ${i + 1}`;
     if (typeof r.id !== 'string' || !ID_RE.test(r.id)) return { ok: false, error: `${where}: id must be letters, digits, _ or -.` };
     if (seen.has(r.id)) return { ok: false, error: `${where}: duplicate id ${r.id}.` };
-    if (r.kind !== 'image' && r.kind !== 'video') return { ok: false, error: `${where}: kind must be "image" or "video".` };
+    if (r.kind !== 'image' && r.kind !== 'video' && r.kind !== 'audio') return { ok: false, error: `${where}: kind must be "image", "video" or "audio".` };
+    const line = typeof r.line === 'string' ? r.line.trim() : '';
+    if (r.kind === 'audio' && !line) return { ok: false, error: `${where}: a voice line needs the exact words in "line".` };
+    if (r.kind !== 'audio' && r.line != null && r.line !== '') return { ok: false, error: `${where}: only audio requests have a "line".` };
+    if (line.length > MAX_LINE_LENGTH) return { ok: false, error: `${where}: line is too long.` };
+    if (r.variant_id != null && (typeof r.variant_id !== 'string' || !ID_RE.test(r.variant_id))) return { ok: false, error: `${where}: variant_id must be a variant's id.` };
     if (typeof r.prompt !== 'string' || !r.prompt.trim()) return { ok: false, error: `${where}: prompt is empty.` };
     if (r.prompt.trim().length > 4000) return { ok: false, error: `${where}: prompt is too long.` };
     if (typeof r.purpose === 'string' && r.purpose.length > 500) return { ok: false, error: `${where}: purpose is too long.` };
@@ -90,6 +106,8 @@ export function parseAssetRequests(text: string): ParseResult {
       purpose: typeof r.purpose === 'string' ? r.purpose : '',
       prompt: r.prompt.trim(),
       aspect: typeof r.aspect === 'string' && r.aspect ? r.aspect : '9:16',
+      ...(r.kind === 'audio' ? { line } : {}),
+      ...(typeof r.variant_id === 'string' ? { variant_id: r.variant_id } : {}),
     });
   }
   return { ok: true, requests };
@@ -97,6 +115,18 @@ export function parseAssetRequests(text: string): ParseResult {
 
 /** Text to paste into the external generator. Contains no transcript or local paths. */
 export function buildGeneratorPrompt(req: AssetRequest, generator: Generator): string {
+  if (req.kind === 'audio') {
+    return [
+      'Generate speech for one voice line in a video edit. Say exactly these words, nothing added or left out:',
+      `"${req.line ?? ''}"`,
+      req.purpose ? `Purpose: ${req.purpose}.` : '',
+      `Voice direction: ${req.prompt}`,
+      "No music or sound effects. Do not imitate a real person's voice.",
+      `Save the file as ${req.id} (WAV or MP3) so it can be imported into AgenEditor.`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
   const what = req.kind === 'image' ? 'Create one image' : 'Create one short video clip (no voice, no music)';
   return [
     `${what} for a ${req.aspect} vertical video edit.`,

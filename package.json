@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "desktop:dev": "cd apps/desktop && tauri dev",
-    "desktop:build": "py -m uv run --locked --extra transcribe --group desktop python scripts/build_desktop_sidecar.py && cd apps/desktop && tauri build"
+    "desktop:build": "py -m uv run --locked --extra transcribe --extra ai --group desktop python scripts/build_desktop_sidecar.py && cd apps/desktop && tauri build"
   },
   "dependencies": {
     "@radix-ui/react-context-menu": "^2.4.1",

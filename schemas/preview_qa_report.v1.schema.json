@@ -1,0 +1,181 @@
+{
+  "$defs": {
+    "CheckKind": {
+      "enum": [
+        "technical",
+        "editorial"
+      ],
+      "title": "CheckKind",
+      "type": "string"
+    },
+    "CheckStatus": {
+      "enum": [
+        "pass",
+        "warn",
+        "fail",
+        "skipped"
+      ],
+      "title": "CheckStatus",
+      "type": "string"
+    },
+    "QACheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Check Id",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected"
+        },
+        "kind": {
+          "$ref": "#/$defs/CheckKind",
+          "default": "technical"
+        },
+        "measured": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Measured"
+        },
+        "message": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Message",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CheckStatus"
+        }
+      },
+      "required": [
+        "check_id",
+        "status"
+      ],
+      "title": "QACheck",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/preview_qa_report.v1.json",
+  "additionalProperties": false,
+  "description": "Checks measured on a finished (usually preview) render before the final render (roadmap Phase 2c).\n\nWarnings only: preview QA points a person or agent at likely problems and never blocks a render. Every\ncheck is measured on the rendered file; ``frame_grid_path`` is a contact sheet of the sampled frames.",
+  "properties": {
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/QACheck"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "frame_grid_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Frame Grid Path"
+    },
+    "frames": {
+      "items": {
+        "type": "integer"
+      },
+      "maxItems": 12,
+      "title": "Frames",
+      "type": "array"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "overall": {
+      "$ref": "#/$defs/CheckStatus",
+      "description": "WARN if any check warned; otherwise PASS. Skipped checks are listed but do not warn.",
+      "readOnly": true
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "timeline_revision": {
+      "minimum": 0,
+      "title": "Timeline Revision",
+      "type": "integer"
+    },
+    "variant_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Variant Id"
+    },
+    "variant_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Variant Revision"
+    }
+  },
+  "required": [
+    "id",
+    "job_id",
+    "project_id",
+    "timeline_revision",
+    "checks",
+    "overall"
+  ],
+  "title": "PreviewQAReport",
+  "type": "object"
+}

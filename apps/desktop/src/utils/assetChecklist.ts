@@ -15,6 +15,15 @@ export interface AssetChecklist {
   review_required?: boolean;
   /** Request ids the person approved. */
   approved?: string[];
+  /** The person's review note on an approved file (checked against the brief); agents read it. */
+  review_notes?: Record<string, { asset_id: string; text: string }>;
+}
+
+/** Notes still valid for these links and approvals (a note belongs to the approved file it was written on). */
+export function keptNotes(notes: AssetChecklist['review_notes'], links: Record<string, string>, approved: string[]): NonNullable<AssetChecklist['review_notes']> {
+  return Object.fromEntries(
+    Object.entries(notes ?? {}).filter(([id, note]) => approved.includes(id) && links[id] === note.asset_id),
+  );
 }
 
 export const DROPPED = 'dropped';
@@ -97,7 +106,8 @@ export function reviewProgress(list: AssetChecklist | null): { done: number; tot
 
 /**
  * Applies a new plan's requests to the saved list. A request keeps its file and approval only
- * when its id, kind and prompt are unchanged; otherwise the person must make and approve it again.
+ * when its id, kind, prompt and (for voice lines) words are unchanged; otherwise the person must make and
+ * approve it again.
  */
 export function mergePlanRequests(previous: AssetChecklist | null, requests: AssetChecklist['requests']): AssetChecklist {
   const links: Record<string, string> = {};
@@ -105,7 +115,7 @@ export function mergePlanRequests(previous: AssetChecklist | null, requests: Ass
   for (const request of requests) {
     const before = previous?.requests.find((item) => item.id === request.id);
     const link = previous?.links[request.id];
-    if (!before || !link || before.kind !== request.kind || before.prompt !== request.prompt) continue;
+    if (!before || !link || before.kind !== request.kind || before.prompt !== request.prompt || (before.line ?? null) !== (request.line ?? null) || (before.variant_id ?? null) !== (request.variant_id ?? null)) continue;
     links[request.id] = link;
     if (previous?.approved?.includes(request.id)) approved.push(request.id);
   }
@@ -119,5 +129,5 @@ export function mergePlanRequests(previous: AssetChecklist | null, requests: Ass
       if (at >= 0) approved.splice(at, 1);
     }
   }
-  return { requests, links, approved, review_required: true, accepted: {} };
+  return { requests, links, approved, review_required: true, accepted: {}, review_notes: keptNotes(previous?.review_notes, links, approved) };
 }

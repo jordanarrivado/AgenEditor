@@ -158,9 +158,9 @@ def apply_patch(store: ProjectStore, patch: RevisionPatch, expected_revision: in
             v1_touched |= pool is v1 and isinstance(op, _V1_OPS)
         elif isinstance(op, AddOverlay):
             clip = op.clip
-            if clip.track not in {TrackId.V2, TrackId.A2, TrackId.A3}:
+            if clip.track not in {TrackId.V2, TrackId.A2, TrackId.A3, TrackId.A4}:
                 raise EngineException(
-                    ErrorCode.INVALID_ARGUMENT, "add_overlay places only V2, A2 or A3 clips"
+                    ErrorCode.INVALID_ARGUMENT, "add_overlay places only V2, A2, A3 or A4 clips"
                 )
             if any(c.clip_id == clip.clip_id for c in [*v1, *overlays]):
                 raise EngineException(ErrorCode.INVALID_ARGUMENT, f"clip {clip.clip_id!r} already exists")
@@ -190,6 +190,8 @@ def apply_patch(store: ProjectStore, patch: RevisionPatch, expected_revision: in
             settings["caption_preset"] = op.preset.value
         elif isinstance(op, SetColorPreset):
             settings["color_preset"] = op.preset.value
+            if op.broll_color_match is not None:
+                settings["broll_color_match"] = op.broll_color_match
         elif isinstance(op, SetAudioMix):
             settings["audio"] = op.audio.model_dump(mode="json")
 

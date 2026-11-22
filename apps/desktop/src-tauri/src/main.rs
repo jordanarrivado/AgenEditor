@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -22,7 +22,8 @@ use tauri_plugin_dialog::DialogExt;
 /// How long a dropped file stays importable.
 const DROP_TTL: Duration = Duration::from_secs(60);
 /// Roles the shell may import a file as.
-const IMPORT_ROLES: &[&str] = &["primary", "broll", "music", "logo", "reference"];
+/// `voice` is used only by voice-line request cards (spec §3.1); the Assets box never picks it.
+const IMPORT_ROLES: &[&str] = &["primary", "broll", "music", "logo", "reference", "voice"];
 /// Most files one picker selection or drop may import.
 const MAX_IMPORT_FILES: usize = 50;
 /// Audio-only extensions that the Assets box imports as music.
@@ -150,7 +151,7 @@ fn start_service(app: &tauri::AppHandle, workspace: &Path) -> Result<Option<Chil
     let mut command;
     if cfg!(debug_assertions) {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-        let python = root.join(".venv/Scripts/python.exe");
+        let python = venv_program(&root, "python");
         if !python.is_file() {
             return Err("Run uv sync before tauri dev".into());
         }
@@ -162,7 +163,7 @@ fn start_service(app: &tauri::AppHandle, workspace: &Path) -> Result<Option<Chil
             .path()
             .resource_dir()
             .map_err(|e| e.to_string())?
-            .join("ageneditor-engine.exe");
+            .join(exe("ageneditor-engine"));
         if !binary.is_file() {
             return Err("Bundled engine sidecar is missing".into());
         }
@@ -248,10 +249,26 @@ fn engine_desktop_blocking(
         "accept_asset_issue",
         "list_jobs",
         "list_revisions",
+        "list_variants",
+        "chat_status",
+        "chat_history",
+        "chat_set_consent",
+        "chat_set_key",
+        "chat_remove_key",
+        "chat_send",
+        "chat_apply",
+        "rename_project",
+        "set_project_archived",
+        "project_settings",
+        "list_editor_presets",
+        "save_editor_preset",
+        "delete_editor_preset",
+        "choose_editor_preset",
         "list_transcripts",
         "source_range",
         "asset_path",
         "render_path",
+        "preview_qa",
         "remove_asset",
         "speech_model_status",
         "list_sound_packs",
@@ -294,10 +311,17 @@ fn engine_desktop_blocking(
     if !ALLOWED.contains(&operation.as_str()) {
         return Err("Desktop operation is not allowed".into());
     }
-    let result = request(
+    // A chat turn waits on the person's model provider (up to two calls of 90 s each).
+    let timeout = if operation == "chat_send" {
+        Duration::from_secs(300)
+    } else {
+        Duration::from_secs(120)
+    };
+    let result = request_with_timeout(
         &workspace,
         "/desktop",
         json!({"operation": operation, "args": args}),
+        timeout,
     )?;
     Ok(result.get("result").cloned().unwrap_or(Value::Null))
 }
@@ -440,6 +464,8 @@ fn bucket_role(bucket: &str, path: &Path) -> Result<&'static str, String> {
     match bucket {
         "main" => Ok("primary"),
         "reference" => Ok("reference"),
+        // Audio-only narration; the engine refuses a file with video in this role.
+        "voice" => Ok("voice"),
         "asset" => {
             let extension = path
                 .extension()
@@ -532,18 +558,30 @@ fn import_dropped_files_blocking(
     import_bucket_paths(&workspace, &project_id, &bucket, tool_name, paths)
 }
 
+/// A program name with the platform's executable suffix (`.exe` on Windows, none elsewhere).
+pub(crate) fn exe(name: &str) -> String {
+    format!("{name}{}", std::env::consts::EXE_SUFFIX)
+}
+
+/// A program inside the repository's uv virtual environment (`Scripts` on Windows, `bin` elsewhere).
+fn venv_program(root: &Path, name: &str) -> PathBuf {
+    let folder = if cfg!(windows) { "Scripts" } else { "bin" };
+    root.join(".venv").join(folder).join(exe(name))
+}
+
 /// The engine CLI that also serves MCP over stdio.
 fn engine_cli(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     if cfg!(debug_assertions) {
-        Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../..")
-            .join(".venv/Scripts/ageneditor.exe"))
+        Ok(venv_program(
+            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
+            "ageneditor",
+        ))
     } else {
         Ok(app
             .path()
             .resource_dir()
             .map_err(|e| e.to_string())?
-            .join("ageneditor-engine.exe"))
+            .join(exe("ageneditor-engine")))
     }
 }
 
@@ -600,6 +638,268 @@ fn export_media_blocking(
     Ok(Some(destination.to_string_lossy().into_owned()))
 }
 
+/// A file name for an exported render: letters, digits, `-` and `_` only, never empty.
+fn export_file_stem(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim_matches('_');
+    let stem: String = trimmed.chars().take(80).collect();
+    if stem.is_empty() {
+        "export".into()
+    } else {
+        stem
+    }
+}
+
+fn copy_new(source: &Path, destination: &Path) -> Result<(), String> {
+    let mut input = fs::File::open(source).map_err(|e| e.to_string())?;
+    let mut output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)
+        .map_err(|e| format!("could not create {}: {e}", destination.display()))?;
+    if let Err(error) = std::io::copy(&mut input, &mut output).and_then(|_| output.sync_all()) {
+        drop(output);
+        let _ = fs::remove_file(destination);
+        return Err(format!(
+            "could not complete {}: {error}",
+            destination.display()
+        ));
+    }
+    Ok(())
+}
+
+/// The first `<stem>`, `<stem>_2`, ... folder that could be created in `parent` (created here).
+fn create_free_dir(parent: &Path, stem: &str) -> Result<PathBuf, String> {
+    for n in 1..1000 {
+        let candidate = if n == 1 {
+            parent.join(stem)
+        } else {
+            parent.join(format!("{stem}_{n}"))
+        };
+        match fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("could not create the delivery folder: {error}")),
+        }
+    }
+    Err("could not find a free delivery folder name".into())
+}
+
+/// The known-issues note with any files that could not be saved added at the end.
+fn delivery_note(note: &str, failures: &[(String, String)]) -> String {
+    let mut text = note.trim_end().to_string();
+    if !failures.is_empty() {
+        text.push_str("\n\n## Not saved\n\n");
+        for (name, error) in failures {
+            text.push_str(&format!("- {name}.mp4: {error}\n"));
+        }
+    }
+    format!("{}\n", text.trim_end())
+}
+
+/// Saves QA-checked final renders (the main edit and its variants) as a delivery: a new folder inside the
+/// chosen one, with client file names and a known-issues note. The engine decides the names and writes the
+/// note from the project's records; each video is checked again like a single export, and one failure does
+/// not stop the others.
+fn export_delivery_blocking(
+    app: tauri::AppHandle,
+    workspace: PathBuf,
+    project_id: String,
+    job_ids: Vec<String>,
+    client: Option<String>,
+) -> Result<Option<Value>, String> {
+    if job_ids.is_empty() || job_ids.len() > 25 {
+        return Err("Choose between 1 and 25 renders to save".into());
+    }
+    let mut args = json!({"project_id": project_id, "job_ids": job_ids});
+    if let Some(client) = client {
+        args["client"] = json!(client);
+    }
+    let plan = request(
+        &workspace,
+        "/desktop",
+        json!({"operation": "delivery_plan", "args": args}),
+    )?
+    .get("result")
+    .cloned()
+    .ok_or("Engine did not return a delivery plan")?;
+    let files = plan
+        .get("files")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let note = plan.get("note").and_then(Value::as_str).unwrap_or_default();
+    let folder_name = export_file_stem(
+        plan.get("folder")
+            .and_then(Value::as_str)
+            .unwrap_or("delivery"),
+    );
+    let Some(selected) = app.dialog().file().blocking_pick_folder() else {
+        return Ok(None);
+    };
+    let parent = selected
+        .into_path()
+        .map_err(|_| "Choose a local folder".to_string())?
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    if parent.starts_with(workspace.canonicalize().map_err(|e| e.to_string())?) {
+        return Err("Export outside the project workspace to preserve originals".into());
+    }
+    let folder = create_free_dir(&parent, &folder_name)?;
+    let mut outcomes = Vec::new();
+    let mut failures = Vec::new();
+    for file in &files {
+        let job_id = file
+            .get("job_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let name = export_file_stem(file.get("name").and_then(Value::as_str).unwrap_or_default());
+        let result = request(
+            &workspace,
+            "/desktop",
+            json!({"operation": "render_path", "args": {
+                "project_id": project_id, "job_id": job_id, "require_qa": true
+            }}),
+        )
+        .and_then(|value| {
+            value
+                .get("result")
+                .and_then(|v| v.get("path"))
+                .and_then(Value::as_str)
+                .map(PathBuf::from)
+                .ok_or_else(|| "Engine did not return an export path".to_string())
+        })
+        .and_then(|source| {
+            let video = folder.join(format!("{name}.mp4"));
+            copy_new(&source, &video)?;
+            let mut saved = vec![video.to_string_lossy().into_owned()];
+            let captions = source.with_file_name("captions.srt");
+            if captions.is_file() {
+                let srt = folder.join(format!("{name}.srt"));
+                copy_new(&captions, &srt)?;
+                saved.push(srt.to_string_lossy().into_owned());
+            }
+            Ok(saved)
+        });
+        outcomes.push(match result {
+            Ok(saved) => json!({"job_id": job_id, "name": name, "saved": saved}),
+            Err(error) => {
+                failures.push((name.clone(), error.clone()));
+                json!({"job_id": job_id, "name": name, "error": error})
+            }
+        });
+    }
+    let note_path = folder.join("known_issues.md");
+    let mut output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&note_path)
+        .map_err(|e| format!("could not create the known-issues note: {e}"))?;
+    output
+        .write_all(delivery_note(note, &failures).as_bytes())
+        .and_then(|_| output.sync_all())
+        .map_err(|e| format!("could not write the known-issues note: {e}"))?;
+    Ok(Some(json!({
+        "folder": folder.to_string_lossy(),
+        "note": note_path.to_string_lossy(),
+        "files": outcomes,
+        "excluded": plan.get("excluded").cloned().unwrap_or(json!([])),
+    })))
+}
+
+/// Most bytes an imported .otio file may have (the engine checks again).
+const MAX_OTIO_BYTES: u64 = 8_000_000;
+
+/// Saves the current revision as an OpenTimelineIO file the person names (outside the workspace).
+fn export_otio_blocking(
+    app: tauri::AppHandle,
+    workspace: PathBuf,
+    project_id: String,
+) -> Result<Option<String>, String> {
+    let result = request(
+        &workspace,
+        "/desktop",
+        json!({"operation": "export_otio", "args": {"project_id": project_id}}),
+    )?;
+    let text = result
+        .get("result")
+        .and_then(|value| value.get("text"))
+        .and_then(Value::as_str)
+        .ok_or("Engine did not return the timeline")?
+        .to_string();
+    let Some(selected) = app
+        .dialog()
+        .file()
+        .add_filter("OpenTimelineIO", &["otio"])
+        .blocking_save_file()
+    else {
+        return Ok(None);
+    };
+    let mut destination = selected
+        .into_path()
+        .map_err(|_| "Choose a local file".to_string())?;
+    destination.set_extension("otio");
+    let parent = destination
+        .parent()
+        .ok_or("Choose a folder")?
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    let destination = parent.join(destination.file_name().ok_or("Choose a file name")?);
+    if destination.starts_with(workspace.canonicalize().map_err(|e| e.to_string())?) {
+        return Err("Save outside the project workspace".into());
+    }
+    fs::write(&destination, text).map_err(|e| format!("Could not save: {e}"))?;
+    Ok(Some(destination.to_string_lossy().into_owned()))
+}
+
+/// Reads an .otio file the person picks and asks the engine to import it as a new revision.
+/// Media must already be registered in the project; nothing else is read or imported.
+fn import_otio_blocking(
+    app: tauri::AppHandle,
+    workspace: PathBuf,
+    project_id: String,
+    expected_revision: i64,
+) -> Result<Option<Value>, String> {
+    let Some(selected) = app
+        .dialog()
+        .file()
+        .add_filter("OpenTimelineIO", &["otio"])
+        .blocking_pick_file()
+    else {
+        return Ok(None);
+    };
+    let path = selected
+        .into_path()
+        .map_err(|_| "Selected item is not a local file".to_string())?;
+    let size = fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    if size > MAX_OTIO_BYTES {
+        return Err("The .otio file is too large".into());
+    }
+    let text =
+        fs::read_to_string(&path).map_err(|_| "The file is not readable text".to_string())?;
+    let result = request(
+        &workspace,
+        "/desktop",
+        json!({"operation": "import_otio", "args": {
+            "project_id": project_id, "text": text, "expected_revision": expected_revision
+        }}),
+    )?;
+    result
+        .get("result")
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| "Engine did not return the import result".to_string())
+}
+
 fn engine_connection_blocking(app: tauri::AppHandle, workspace: PathBuf) -> Result<Value, String> {
     let connected = service_ready(&workspace);
     let workspace = workspace.to_string_lossy();
@@ -623,13 +923,13 @@ fn cache_model_blocking(app: tauri::AppHandle, preset: String) -> Result<String,
     let mut command;
     if cfg!(debug_assertions) {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-        command = Command::new(root.join(".venv/Scripts/ageneditor.exe"));
+        command = Command::new(venv_program(&root, "ageneditor"));
     } else {
         command = Command::new(
             app.path()
                 .resource_dir()
                 .map_err(|e| e.to_string())?
-                .join("ageneditor-engine.exe"),
+                .join(exe("ageneditor-engine")),
         );
     }
     command
@@ -658,7 +958,9 @@ fn cache_model_blocking(app: tauri::AppHandle, preset: String) -> Result<String,
             if status.success() {
                 return Ok(format!("{preset} model cached"));
             }
-            let output = stderr.and_then(|reader| reader.join().ok()).unwrap_or_default();
+            let output = stderr
+                .and_then(|reader| reader.join().ok())
+                .unwrap_or_default();
             return Err(model_failure_message(&output));
         }
         thread::sleep(Duration::from_millis(100));
@@ -794,11 +1096,13 @@ async fn refresh_claude_usage(
     blocking(move || usage::refresh_blocking(app, slot)).await
 }
 
-/// The only sites the shell opens for B-roll (spec §3.1). The page picks a name, never a URL.
+/// The only sites the shell opens for B-roll and voice lines (spec §3.1). The page picks a name,
+/// never a URL.
 fn generator_url(site: &str) -> Option<&'static str> {
     match site {
         "chatgpt" => Some("https://chatgpt.com/"),
         "flow" => Some("https://flow.google.com/"),
+        "aistudio" => Some("https://aistudio.google.com/generate-speech"),
         _ => None,
     }
 }
@@ -806,13 +1110,27 @@ fn generator_url(site: &str) -> Option<&'static str> {
 #[tauri::command]
 fn open_generator(site: String) -> Result<(), String> {
     let url = generator_url(&site).ok_or("Unknown site")?;
-    let mut command = Command::new("rundll32.exe");
-    command.args(["url.dll,FileProtocolHandler", url]);
+    // A fixed URL handed to the system's browser opener; no shell is involved on any platform.
     #[cfg(windows)]
-    {
+    let mut command = {
         use std::os::windows::process::CommandExt;
+        let mut command = Command::new("rundll32.exe");
+        command.args(["url.dll,FileProtocolHandler", url]);
         command.creation_flags(0x0800_0000);
-    }
+        command
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = Command::new("open");
+        command.arg(url);
+        command
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = {
+        let mut command = Command::new("xdg-open");
+        command.arg(url);
+        command
+    };
     command
         .spawn()
         .map(|_| ())
@@ -907,6 +1225,39 @@ async fn export_media(
 }
 
 #[tauri::command]
+async fn export_otio(
+    app: tauri::AppHandle,
+    state: State<'_, EngineState>,
+    project_id: String,
+) -> Result<Option<String>, String> {
+    let workspace = state.workspace.clone();
+    blocking(move || export_otio_blocking(app, workspace, project_id)).await
+}
+
+#[tauri::command]
+async fn import_otio(
+    app: tauri::AppHandle,
+    state: State<'_, EngineState>,
+    project_id: String,
+    expected_revision: i64,
+) -> Result<Option<Value>, String> {
+    let workspace = state.workspace.clone();
+    blocking(move || import_otio_blocking(app, workspace, project_id, expected_revision)).await
+}
+
+#[tauri::command]
+async fn export_delivery(
+    app: tauri::AppHandle,
+    state: State<'_, EngineState>,
+    project_id: String,
+    job_ids: Vec<String>,
+    client: Option<String>,
+) -> Result<Option<Value>, String> {
+    let workspace = state.workspace.clone();
+    blocking(move || export_delivery_blocking(app, workspace, project_id, job_ids, client)).await
+}
+
+#[tauri::command]
 async fn engine_connection(
     app: tauri::AppHandle,
     state: State<'_, EngineState>,
@@ -922,7 +1273,12 @@ async fn cache_model(app: tauri::AppHandle, preset: String) -> Result<String, St
 
 #[cfg(test)]
 mod tests {
-    use super::{generator_url, model_failure_message};
+    use super::{
+        bucket_role, create_free_dir, delivery_note, exe, export_file_stem, generator_url,
+        model_failure_message, venv_program, IMPORT_ROLES,
+    };
+    use std::fs;
+    use std::path::Path;
 
     #[test]
     fn model_install_failure_reports_the_engine_reason() {
@@ -944,9 +1300,71 @@ mod tests {
     }
 
     #[test]
-    fn only_chatgpt_and_flow_can_be_opened() {
+    fn program_paths_follow_the_platform() {
+        let root = Path::new("repo");
+        let python = venv_program(root, "python");
+        if cfg!(windows) {
+            assert_eq!(
+                python,
+                root.join(".venv").join("Scripts").join("python.exe")
+            );
+            assert_eq!(exe("claude"), "claude.exe");
+        } else {
+            assert_eq!(python, root.join(".venv").join("bin").join("python"));
+            assert_eq!(exe("claude"), "claude");
+        }
+    }
+
+    #[test]
+    fn export_names_are_safe_and_never_overwrite() {
+        assert_eq!(export_file_stem("Hook B / Spanish!"), "Hook_B___Spanish");
+        assert_eq!(export_file_stem("../../etc"), "etc");
+        assert_eq!(export_file_stem("///"), "export");
+        let folder = std::env::temp_dir().join(format!("ageneditor-export-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let first = create_free_dir(&folder, "Acme_delivery").unwrap();
+        assert_eq!(first, folder.join("Acme_delivery"));
+        assert_eq!(
+            create_free_dir(&folder, "Acme_delivery").unwrap(),
+            folder.join("Acme_delivery_2")
+        );
+        fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn the_note_lists_files_that_could_not_be_saved() {
+        assert_eq!(delivery_note("# Notes\n\n", &[]), "# Notes\n");
+        let failures = vec![(
+            "Acme_Main".to_string(),
+            "render is not complete".to_string(),
+        )];
+        assert_eq!(
+            delivery_note("# Notes\n", &failures),
+            "# Notes\n\n## Not saved\n\n- Acme_Main.mp4: render is not complete\n"
+        );
+    }
+
+    #[test]
+    fn import_boxes_map_to_engine_roles() {
+        let wav = Path::new("narration.wav");
+        let mp4 = Path::new("shot.mp4");
+        assert_eq!(bucket_role("main", mp4), Ok("primary"));
+        assert_eq!(bucket_role("reference", mp4), Ok("reference"));
+        assert_eq!(bucket_role("asset", wav), Ok("music"));
+        assert_eq!(bucket_role("asset", mp4), Ok("broll"));
+        assert_eq!(bucket_role("voice", wav), Ok("voice"));
+        assert!(bucket_role("other", wav).is_err());
+        assert!(IMPORT_ROLES.contains(&"voice"));
+    }
+
+    #[test]
+    fn only_the_listed_generator_sites_can_be_opened() {
         assert_eq!(generator_url("chatgpt"), Some("https://chatgpt.com/"));
         assert_eq!(generator_url("flow"), Some("https://flow.google.com/"));
+        assert_eq!(
+            generator_url("aistudio"),
+            Some("https://aistudio.google.com/generate-speech")
+        );
         for other in [
             "",
             "gemini",
@@ -1010,6 +1428,9 @@ fn main() {
             stop_agent,
             new_agent_conversation,
             export_media,
+            export_delivery,
+            export_otio,
+            import_otio,
             engine_connection,
             cache_model
         ])

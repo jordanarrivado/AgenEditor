@@ -272,11 +272,22 @@ def to_srt(timeline: Timeline) -> str:
 
 
 #: ASS colours are &HAABBGGRR. Styles are fixed per preset; no caller-supplied style text.
+# ``align`` is the ASS numpad position (2 bottom, 5 middle, 8 top); ``scale`` multiplies the font size and is
+# kept at or below 1, because the base size already fits the longest line to the frame width.
 _PRESET_STYLE = {
     CaptionPreset.CLEAN_WHITE: {"primary": "&H00FFFFFF", "back": "&H64000000", "bold": 0, "border": 1},
     CaptionPreset.BOLD_YELLOW: {"primary": "&H0000FFFF", "back": "&H64000000", "bold": -1, "border": 1},
     CaptionPreset.BOXED: {"primary": "&H00FFFFFF", "back": "&H8C000000", "bold": 0, "border": 3},
-}
+    CaptionPreset.TOP_CLEAN: {
+        "primary": "&H00FFFFFF", "back": "&H64000000", "bold": 0, "border": 1, "align": 8,
+    },
+    CaptionPreset.BIG_CENTER: {
+        "primary": "&H00FFFFFF", "back": "&H96000000", "bold": -1, "border": 1, "align": 5, "outline": 0.12,
+    },
+    CaptionPreset.LOWER_MINIMAL: {
+        "primary": "&H00FFFFFF", "back": "&H00000000", "bold": 0, "border": 1, "scale": 0.8, "outline": 0.05,
+    },
+}  # fmt: skip
 
 
 def safe_margins(timeline: Timeline) -> tuple[int, int]:
@@ -303,8 +314,11 @@ def to_ass(timeline: Timeline) -> str:
     profile = timeline.render_profile
     style = _PRESET_STYLE[timeline.caption_preset]
     side, bottom = safe_margins(timeline)
-    size = caption_font_size(timeline)
-    outline = max(1, round(size * 0.08))
+    size = max(8, round(caption_font_size(timeline) * style.get("scale", 1.0)))
+    outline = max(1, round(size * style.get("outline", 0.08)))
+    align = style.get("align", 2)
+    # Top captions keep the same clearance from the top edge (status bar) as bottom ones from the bottom.
+    vertical = {2: bottom, 8: round(profile.height * 0.12), 5: 0}[align]
 
     def stamp(frames: int) -> str:
         cs = round(Fraction(_ms(frames, timeline), 10))
@@ -326,7 +340,7 @@ def to_ass(timeline: Timeline) -> str:
         "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, "
         "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
         f"Style: Caption,Poppins,{size},{style['primary']},&H00FFFFFF,&H00000000,{style['back']},"
-        f"{style['bold']},0,0,0,100,100,0,0,{style['border']},{outline},1,2,{side},{side},{bottom},1",
+        f"{style['bold']},0,0,0,100,100,0,0,{style['border']},{outline},1,{align},{side},{side},{vertical},1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

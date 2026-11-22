@@ -27,6 +27,8 @@ UNCERTAIN_WORD_PROBABILITY = 0.6
 MAX_BROLL_SHARE = Fraction(1, 2)
 MAX_BROLL_SECONDS = 6
 MAX_UPSCALE = 1.5
+#: Speaker audio quieter than this under a voice line is treated as deliberately turned down.
+VOICE_SPEAKER_MAX_GAIN_DB = -20.0
 
 
 def _list(items: list[str], limit: int = 6) -> str:
@@ -230,8 +232,32 @@ def editorial_flags(store: ProjectStore, timeline: Timeline) -> list[QACheck]:
         "speaker should stay visible when B-roll is not justified",
     )
 
+    voice = sorted((c for c in timeline.clips if c.track is TrackId.A4), key=lambda c: c.timeline_in_frames)
+    if voice:
+        # Gain is per clip, so this only knows whether the speaker's clip was turned down, not
+        # whether anyone is actually talking at that moment.
+        clashes = []
+        for line in voice:
+            for clip in v1:
+                if assets[clip.asset_id].audio is None or clip.gain_db <= VOICE_SPEAKER_MAX_GAIN_DB:
+                    continue
+                overlap = min(line.timeline_out_frames, clip.timeline_out_frames) - max(
+                    line.timeline_in_frames, clip.timeline_in_frames
+                )
+                if overlap > 0:
+                    clashes.append(f"{line.clip_id} over {clip.clip_id} for {overlap / fps:.1f}s")
+        flag(
+            "voice_over_speaker",
+            clashes,
+            f"speaker audio at ≤ {VOICE_SPEAKER_MAX_GAIN_DB:g} dB wherever a voice line plays",
+            f"{len(voice)} voice line{'s' if len(voice) != 1 else ''} clear of the speaker's audio",
+            "a voice line plays over the speaker's own audio; listen, then lower that V1 clip's gain "
+            "or move the line",
+        )
+
     if timeline.captions:
         uncertain: list[str] = []
+        estimated: list[str] = []
         fixed = {(f.transcript_id, f.word_id) for f in timeline.word_corrections}
         for transcript_id in {c.transcript_id for c in timeline.captions if c.transcript_id}:
             words = {w.id: w for w in store.transcript(transcript_id).words}
@@ -246,6 +272,16 @@ def editorial_flags(store: ProjectStore, timeline: Timeline) -> list[QACheck]:
                     and words[w].probability < UNCERTAIN_WORD_PROBABILITY
                     and (transcript_id, w) not in fixed
                 ]
+                if any(w in words and words[w].timing == "estimated" for w in cue.word_ids):
+                    estimated.append(f"{cue.cue_id} at {cue.timeline_in_frames / fps:.2f}s")
+        flag(
+            "estimated_caption_timing",
+            estimated,
+            "captions timed from aligned words",
+            "all caption words aligned",
+            "these captions use word times estimated by syllables (the recognizer gave none); "
+            "watch them against the speech",
+        )
         flag(
             "uncertain_caption_words",
             uncertain,

@@ -1,0 +1,328 @@
+{
+  "$defs": {
+    "Author": {
+      "enum": [
+        "user",
+        "agent",
+        "system"
+      ],
+      "title": "Author",
+      "type": "string"
+    },
+    "Clip": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "clip_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "fade_in_frames": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Fade In Frames",
+          "type": "integer"
+        },
+        "fade_out_frames": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Fade Out Frames",
+          "type": "integer"
+        },
+        "fit_mode": {
+          "$ref": "#/$defs/FitMode",
+          "default": "cover"
+        },
+        "gain_db": {
+          "default": 0.0,
+          "maximum": 12,
+          "minimum": -60,
+          "title": "Gain Db",
+          "type": "number"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        },
+        "source_in_frames": {
+          "minimum": 0,
+          "title": "Source In Frames",
+          "type": "integer"
+        },
+        "source_out_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Source Out Frames",
+          "type": "integer"
+        },
+        "timeline_duration_frames": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeline Duration Frames"
+        },
+        "timeline_in_frames": {
+          "minimum": 0,
+          "title": "Timeline In Frames",
+          "type": "integer"
+        },
+        "track": {
+          "$ref": "#/$defs/TrackId"
+        },
+        "transform": {
+          "$ref": "#/$defs/Transform"
+        }
+      },
+      "required": [
+        "clip_id",
+        "asset_id",
+        "track",
+        "source_in_frames",
+        "source_out_frames",
+        "timeline_in_frames"
+      ],
+      "title": "Clip",
+      "type": "object"
+    },
+    "FitMode": {
+      "enum": [
+        "cover",
+        "contain"
+      ],
+      "title": "FitMode",
+      "type": "string"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "author": {
+          "$ref": "#/$defs/Author"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Summary",
+          "type": "string"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        }
+      },
+      "required": [
+        "author"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "TrackId": {
+      "enum": [
+        "V1",
+        "V2",
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "T1"
+      ],
+      "title": "TrackId",
+      "type": "string"
+    },
+    "Transform": {
+      "additionalProperties": false,
+      "properties": {
+        "center_x": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Center X",
+          "type": "number"
+        },
+        "center_y": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Center Y",
+          "type": "number"
+        },
+        "scale": {
+          "default": 1.0,
+          "maximum": 2.0,
+          "minimum": 1.0,
+          "title": "Scale",
+          "type": "number"
+        }
+      },
+      "title": "Transform",
+      "type": "object"
+    },
+    "VariantKind": {
+      "enum": [
+        "hook",
+        "language",
+        "localized",
+        "other"
+      ],
+      "title": "VariantKind",
+      "type": "string"
+    },
+    "VariantOverrides": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_swaps": {
+          "maxProperties": 50,
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9_\\-]{0,63}$": {
+              "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+              "type": "string"
+            }
+          },
+          "title": "Asset Swaps",
+          "type": "object"
+        },
+        "captions": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "off"
+          ],
+          "title": "Captions",
+          "type": "string"
+        },
+        "hook_clips": {
+          "items": {
+            "$ref": "#/$defs/Clip"
+          },
+          "maxItems": 20,
+          "title": "Hook Clips",
+          "type": "array"
+        },
+        "hook_overlays": {
+          "items": {
+            "$ref": "#/$defs/Clip"
+          },
+          "maxItems": 50,
+          "title": "Hook Overlays",
+          "type": "array"
+        },
+        "hook_replaces_clips": {
+          "default": 0,
+          "maximum": 20,
+          "minimum": 0,
+          "title": "Hook Replaces Clips",
+          "type": "integer"
+        }
+      },
+      "title": "VariantOverrides",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/variant.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/VariantKind"
+    },
+    "language": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Language"
+    },
+    "name": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "note": {
+      "default": "",
+      "maxLength": 500,
+      "title": "Note",
+      "type": "string"
+    },
+    "overrides": {
+      "$ref": "#/$defs/VariantOverrides"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "project_id",
+    "name",
+    "kind",
+    "revision",
+    "provenance"
+  ],
+  "title": "Variant",
+  "type": "object"
+}

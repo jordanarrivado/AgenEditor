@@ -1,6 +1,6 @@
 # Built-in AI chat implementation plan
 
-**Status:** Plan for review; no implementation or provider connection has been made.
+**Status (2026-11-21):** Gates 1-4 implemented in code (`chat.py`, `chat_providers.py`, `credentials.py`, `ChatPanel.tsx`) and tested offline with recorded responses. Gate 5 (live provider smoke tests with real credentials, a live native workflow) has not been run; no provider connection has been made.
 
 ## Goal and scope
 

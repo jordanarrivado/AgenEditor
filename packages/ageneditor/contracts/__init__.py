@@ -17,10 +17,12 @@ from .asset import (
     ShotLabel,
     VideoStream,
 )
-from .asset_checklist import AcceptedIssue, AssetChecklist, AssetRequest
+from .asset_checklist import AcceptedIssue, AssetChecklist, AssetRequest, ReviewNote
 from .brief import BriefItem, ProjectBrief
+from .chat import ChatMessage, ChatProposal, ChatProvider, ChatTurn
 from .common import SCHEMA_VERSION, EngineError, EngineException, ErrorCode
 from .edit_plan import EditPlan, PlanDisposition, PlanResult, PlanSegment
+from .editor_preset import EditorPreset, EditorPresetLibrary
 from .job import Job, JobKind, JobStatus
 from .orchestration import (
     AgentCapabilities,
@@ -89,7 +91,14 @@ from .production import (
     StyleObservation,
     TaskType,
 )
-from .qa import CheckKind, CheckStatus, GeneratedAsset, QACheck, QAReport
+from .project_delivery import (
+    DeliveryFile,
+    ExcludedRender,
+    GeneratedMaterial,
+    KnownIssue,
+    ProjectDeliveryPlan,
+)
+from .qa import CheckKind, CheckStatus, GeneratedAsset, PreviewQAReport, QACheck, QAReport
 from .render_profile import BUILTIN_PROFILES, REEL_FINAL, REEL_PREVIEW, EncoderPreset, RenderProfile
 from .review import (
     ClipApproval,
@@ -155,6 +164,7 @@ from .transition import (
     TransitionSettings,
     TransitionStyle,
 )
+from .variant import Variant, VariantKind, VariantOverrides, VariantView
 
 #: Top-level contracts exported as JSON Schema (consumed by the UI and documented for MCP).
 SCHEMA_MODELS: dict[str, type[BaseModel]] = {
@@ -165,6 +175,7 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "timeline": Timeline,
     "job": Job,
     "qa_report": QAReport,
+    "preview_qa_report": PreviewQAReport,
     "engine_error": EngineError,
     "transcript": Transcript,
     "edit_plan": EditPlan,
@@ -174,6 +185,12 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "sound_library": SoundLibrary,
     "sound_catalog_entry": SoundCatalogEntry,
     "transition_settings": TransitionSettings,
+    "variant": Variant,
+    "variant_view": VariantView,
+    "editor_preset_library": EditorPresetLibrary,
+    "chat_message": ChatMessage,
+    "chat_proposal": ChatProposal,
+    "project_delivery_plan": ProjectDeliveryPlan,
     # AgenEditor 2.0 production contracts
     "client": Client,
     "instruction_profile": InstructionProfile,
@@ -262,6 +279,10 @@ __all__ = [
     "CandidateStatus",
     "CaptionCue",
     "CaptionPreset",
+    "ChatMessage",
+    "ChatProposal",
+    "ChatProvider",
+    "ChatTurn",
     "CheckKind",
     "CheckStatus",
     "CheckpointDescriptor",
@@ -280,17 +301,21 @@ __all__ = [
     "CostKind",
     "CostReservation",
     "CreativeDefaults",
+    "DeliveryFile",
     "DeliveryManifest",
     "DeliveryRules",
     "DiscoveryReport",
     "DurationStats",
     "EditPlan",
+    "EditorPreset",
+    "EditorPresetLibrary",
     "EncoderPreset",
     "EngineError",
     "EngineException",
     "ErrorCode",
     "EvidenceCitation",
     "EvidenceRange",
+    "ExcludedRender",
     "ExportArtifact",
     "FindingCategory",
     "FindingInput",
@@ -299,12 +324,14 @@ __all__ = [
     "FindingState",
     "FitMode",
     "GeneratedAsset",
+    "GeneratedMaterial",
     "GraphNode",
     "HookCandidate",
     "InstructionProfile",
     "Job",
     "JobKind",
     "JobStatus",
+    "KnownIssue",
     "LibrarySource",
     "ModelPreset",
     "ModelRoutingDecision",
@@ -317,11 +344,13 @@ __all__ = [
     "PlannedCut",
     "PoolName",
     "PoolState",
+    "PreviewQAReport",
     "ProductionClip",
     "ProductionEvent",
     "ProductionMetrics",
     "ProfileScope",
     "ProjectBrief",
+    "ProjectDeliveryPlan",
     "Provenance",
     "ProviderConfig",
     "ProviderModel",
@@ -339,6 +368,7 @@ __all__ = [
     "ResourceConfig",
     "ResourcePressure",
     "ResourceSnapshot",
+    "ReviewNote",
     "RevisionOp",
     "RevisionPatch",
     "RevisionResult",
@@ -378,6 +408,10 @@ __all__ = [
     "TransitionStyle",
     "TrimClip",
     "ValidationIssue",
+    "Variant",
+    "VariantKind",
+    "VariantOverrides",
+    "VariantView",
     "VideoStream",
     "WordCorrection",
     "WorkerLease",

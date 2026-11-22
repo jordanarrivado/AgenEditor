@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DROPPED, checklistReady, loadChecklist, requestStatus, saveChecklist, type AssetChecklist } from '../../apps/desktop/src/utils/assetChecklist';
+import { DROPPED, checklistReady, loadChecklist, mergePlanRequests, requestStatus, saveChecklist, type AssetChecklist } from '../../apps/desktop/src/utils/assetChecklist';
 
 function memoryStorage() {
   const data = new Map<string, string>();
@@ -42,5 +42,18 @@ describe('asset checklist', () => {
     expect(requestStatus(list, 'gen_b', new Set())).toBe('dropped');
     expect(checklistReady(list, new Set(['asset_1']))).toBe(true);
     expect(checklistReady(list, new Set())).toBe(false);
+  });
+});
+
+describe('review notes across a re-plan', () => {
+  it('keeps a note only while its request keeps the same approved file', () => {
+    const keep = { id: 'a', kind: 'image' as const, purpose: '', prompt: 'same', aspect: '9:16' };
+    const changed = { id: 'b', kind: 'image' as const, purpose: '', prompt: 'old', aspect: '9:16' };
+    const previous: AssetChecklist = {
+      requests: [keep, changed], links: { a: 'asset_a', b: 'asset_b' }, approved: ['a', 'b'],
+      review_notes: { a: { asset_id: 'asset_a', text: 'first 3 s' }, b: { asset_id: 'asset_b', text: 'stale' } },
+    };
+    const merged = mergePlanRequests(previous, [keep, { ...changed, prompt: 'new' }]);
+    expect(merged.review_notes).toEqual({ a: { asset_id: 'asset_a', text: 'first 3 s' } });
   });
 });

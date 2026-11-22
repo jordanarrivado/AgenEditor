@@ -1,24 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { Check, ClipboardCopy, ImageIcon, Loader2, RotateCcw, Undo2, Upload, Video, X } from 'lucide-react';
+import { Check, ClipboardCopy, ImageIcon, Loader2, Mic, RotateCcw, Undo2, Upload, Video, X } from 'lucide-react';
 import {
   liveEngineRepository as engine,
   type EngineAsset,
   type EngineAssetChecklist,
 } from '../../services/liveEngineRepository';
-import type { AssetRequest } from '../../utils/assetRequests';
-import { isStoryboard, reviewProgress, reviewState, videoOfStoryboard, type ReviewState } from '../../utils/assetChecklist';
+import { buildGeneratorPrompt, type AssetRequest } from '../../utils/assetRequests';
+import { isStoryboard, keptNotes, reviewProgress, reviewState, videoOfStoryboard, type ReviewState } from '../../utils/assetChecklist';
 import { copyText } from '../../utils/clipboard';
 import { engineErrorText } from '../../utils/engineError';
 import { Badge, Button } from '../../components/ui/primitives';
 
-type Site = 'chatgpt' | 'flow';
-const SITE_LABEL: Record<Site, string> = { chatgpt: 'ChatGPT', flow: 'Google Flow' };
+type Site = 'chatgpt' | 'flow' | 'aistudio';
+const SITE_LABEL: Record<Site, string> = { chatgpt: 'ChatGPT', flow: 'Google Flow', aistudio: 'Google AI Studio' };
 
-/** Images and storyboards are made in ChatGPT; videos in Google Flow. */
-export const siteFor = (request: AssetRequest): Site => (request.kind === 'video' ? 'flow' : 'chatgpt');
+/** Images and storyboards are made in ChatGPT, videos in Google Flow, voice lines in Google AI Studio. */
+export const siteFor = (request: AssetRequest): Site =>
+  request.kind === 'video' ? 'flow' : request.kind === 'audio' ? 'aistudio' : 'chatgpt';
 /** The tool name written on the imported file so it is labelled AI-generated (external). */
 export const toolFor = (request: AssetRequest) => SITE_LABEL[siteFor(request)];
-const kindLabel = (request: AssetRequest) => (isStoryboard(request.id) ? 'Storyboard image' : request.kind === 'image' ? 'Image' : 'Video');
+const KIND_LABEL = { image: 'Image', video: 'Video', audio: 'Voice line' } as const;
+const kindLabel = (request: AssetRequest) => (isStoryboard(request.id) ? 'Storyboard image' : KIND_LABEL[request.kind]);
+/** What the person makes, in a sentence ("make the voice line"). */
+const noun = (request: AssetRequest) => (request.kind === 'audio' ? 'voice line' : request.kind);
+/** Voice lines copy the exact words plus direction; images and videos copy the planner's prompt as written. */
+const promptText = (request: AssetRequest) => (request.kind === 'audio' ? buildGeneratorPrompt(request, 'aistudio') : request.prompt);
 
 const STATE_BADGE: Record<ReviewState, { text: string; tone: 'neutral' | 'warning' | 'success' | 'accent' }> = {
   waiting: { text: 'To make', tone: 'neutral' },
@@ -40,6 +46,9 @@ const AssetPreview: React.FC<{ projectId: string; asset: EngineAsset }> = ({ pro
   }, [projectId, asset.id]);
   if (failed) return <p className="text-xs text-danger">Could not load a preview of {asset.original_filename}.</p>;
   if (!url) return <div className="flex h-24 items-center justify-center rounded-lg bg-black"><Loader2 className="h-4 w-4 animate-spin text-fg-3" /></div>;
+  if (asset.kind === 'audio') {
+    return <audio src={url} controls aria-label={`Listen to ${asset.original_filename}`} className="w-full" />;
+  }
   return asset.kind === 'image'
     ? <img src={url} alt={`Preview of ${asset.original_filename}`} className="max-h-56 w-auto max-w-full rounded-lg border border-line bg-black object-contain" />
     : <video src={url} controls aria-label={`Preview of ${asset.original_filename}`} className="max-h-56 w-auto max-w-full rounded-lg border border-line bg-black" />;
@@ -67,6 +76,8 @@ export interface BrollPanelProps {
 export const BrollPanel: React.FC<BrollPanelProps> = ({ projectId, checklist, assets, disabled, attaching, onBrowse, onChange, onNotice }) => {
   const [working, setWorking] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  // Review notes being typed, per request, until the person approves.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const progress = reviewProgress(checklist);
   const assetFor = (requestId: string) => assets.find((asset) => asset.id === checklist.links[requestId]);
 
@@ -77,20 +88,24 @@ export const BrollPanel: React.FC<BrollPanelProps> = ({ projectId, checklist, as
 
   const copyAndOpen = async (request: AssetRequest) => {
     const site = siteFor(request);
-    if (!(await copyText(request.prompt))) {
+    if (!(await copyText(promptText(request)))) {
       onNotice('Could not copy automatically. Open "Show the prompt", select the text and copy it yourself.');
       return;
     }
     try {
       await engine.openGenerator(site);
-      onNotice(`Prompt copied. ${SITE_LABEL[site]} is opening: paste it there, make the ${request.kind}, save it, then drop it on this card.`);
+      onNotice(`Prompt copied. ${SITE_LABEL[site]} is opening: paste it there, make the ${noun(request)}, save it, then drop it on this card.`);
     } catch (error) {
       onNotice(`Prompt copied, but ${SITE_LABEL[site]} could not be opened (${engineErrorText(error)}). Open it yourself and paste.`);
     }
   };
 
   const approve = (request: AssetRequest) => run(request.id, async () => {
-    onChange(await engine.approveChecklistRequest(projectId, request.id, checklist.version));
+    const note = drafts[request.id]?.trim();
+    onChange(await (note
+      ? engine.approveChecklistRequest(projectId, request.id, checklist.version, note)
+      : engine.approveChecklistRequest(projectId, request.id, checklist.version)));
+    setDrafts(({ [request.id]: _done, ...rest }) => rest);
   });
 
   const reset = (request: AssetRequest, andCopy: boolean) => run(request.id, async () => {
@@ -113,9 +128,12 @@ export const BrollPanel: React.FC<BrollPanelProps> = ({ projectId, checklist, as
   const skip = (request: AssetRequest) => run(request.id, async () => {
     const previous = checklist.links[request.id];
     const links = { ...checklist.links, [request.id]: 'dropped' };
+    const approved = (checklist.approved ?? []).filter((id) => id !== request.id);
+    // Only the skipped request loses its accepted issue and note; the others keep theirs.
+    const { [request.id]: _accepted, ...accepted } = checklist.accepted ?? {};
     onChange(await engine.saveChecklist(projectId, {
-      requests: checklist.requests, links, accepted: {}, review_required: checklist.review_required,
-      approved: (checklist.approved ?? []).filter((id) => id !== request.id),
+      requests: checklist.requests, links, accepted, review_required: checklist.review_required,
+      approved, review_notes: keptNotes(checklist.review_notes, links, approved),
     }, checklist.version));
     if (previous && previous !== 'dropped') void engine.removeAsset(projectId, previous).catch(() => undefined);
   });
@@ -126,7 +144,7 @@ export const BrollPanel: React.FC<BrollPanelProps> = ({ projectId, checklist, as
         <div>
           <h3 id="broll-title" className="font-semibold">B-roll to make</h3>
           <p className="text-xs text-fg-3">
-            Made in ChatGPT and Google Flow, not by AgenEditor. Copy a prompt, make the file there, drop it on its card, then approve it.
+            Made in ChatGPT, Google Flow or Google AI Studio, not by AgenEditor. Copy a prompt, make the file there, drop it on its card, then approve it.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -153,24 +171,31 @@ export const BrollPanel: React.FC<BrollPanelProps> = ({ projectId, checklist, as
               className={`space-y-3 rounded-xl border border-dashed p-4 ${state === 'review' ? 'border-warning/60' : 'border-line'} ${state === 'locked' ? 'opacity-70' : ''}`}>
               <div className="flex flex-wrap items-start gap-3">
                 <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">
-                  {request.kind === 'video' ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
+                  {request.kind === 'video' ? <Video className="h-4 w-4" /> : request.kind === 'audio' ? <Mic className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold">{request.purpose || request.id}</p>
                   <p className="text-xs text-fg-3">
-                    {kindLabel(request)} · {request.aspect} · {SITE_LABEL[site]}
+                    {kindLabel(request)}{request.kind === 'audio' ? '' : ` · ${request.aspect}`} · {SITE_LABEL[site]}
                     {storyboardOf && ` · guides video ${storyboardOf}`}
+                    {request.variant_id && ` · only for variant ${request.variant_id}`}
                   </p>
                 </div>
                 <Badge tone={badge.tone}>{state === 'approved' && <Check className="h-3 w-3" strokeWidth={3} />}{badge.text}</Badge>
               </div>
+
+              {request.kind === 'audio' && request.line && (
+                <blockquote className="rounded-lg border-l-2 border-accent bg-app/50 px-3 py-2 text-sm text-fg" aria-label={`Words for ${request.id}`}>
+                  “{request.line}”
+                </blockquote>
+              )}
 
               {state === 'locked' && <p className="text-sm text-fg-2">Approve (or skip) the storyboard above first. Then you will attach it in Google Flow with this prompt.</p>}
 
               {(state === 'waiting' || state === 'review' || state === 'approved') && (
                 <details className="rounded-lg border border-line bg-app/50 px-3 py-2 text-sm">
                   <summary className="cursor-pointer font-medium">Show the prompt</summary>
-                  <textarea readOnly aria-label={`Prompt for ${request.id}`} value={request.prompt} rows={5} className="mt-2 w-full resize-y rounded-md border border-line bg-app p-2 text-xs text-fg" />
+                  <textarea readOnly aria-label={`Prompt for ${request.id}`} value={promptText(request)} rows={5} className="mt-2 w-full resize-y rounded-md border border-line bg-app p-2 text-xs text-fg" />
                 </details>
               )}
 
@@ -187,7 +212,7 @@ export const BrollPanel: React.FC<BrollPanelProps> = ({ projectId, checklist, as
                       icon={attaching === request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}>Browse…</Button>
                     <Button variant="ghost" size="lg" disabled={busy} onClick={() => skip(request)}>Skip · edit without it</Button>
                   </div>
-                  <p className="text-xs text-fg-3">Or drop the finished {request.kind} anywhere on this card.</p>
+                  <p className="text-xs text-fg-3">Or drop the finished {noun(request)} anywhere on this card.</p>
                 </div>
               )}
 
@@ -200,8 +225,17 @@ export const BrollPanel: React.FC<BrollPanelProps> = ({ projectId, checklist, as
                   <p className="text-sm text-fg-2">
                     {isStoryboard(request.id)
                       ? 'Check the frames are in the right order and the style is consistent. Approving unlocks the video.'
-                      : `Watch or look at it before approving. AgenEditor cannot judge the ${request.kind} for you.`}
+                      : request.kind === 'audio'
+                        ? 'Listen to it before approving: check it says exactly the words above. AgenEditor does not check the speech for you.'
+                        : `Watch or look at it before approving. AgenEditor cannot judge the ${request.kind} for you.`}
                   </p>
+                  <label className="block text-xs text-fg-2">
+                    Review note for Claude (optional)
+                    <textarea aria-label={`Review note for ${request.id}`} rows={2} maxLength={500} disabled={busy}
+                      value={drafts[request.id] ?? ''} onChange={(event) => setDrafts((all) => ({ ...all, [request.id]: event.target.value }))}
+                      placeholder="Checked against your brief, e.g. use only the first 3 seconds; the colours match the brand."
+                      className="mt-1 w-full resize-y rounded-md border border-line bg-app p-2 text-sm text-fg" />
+                  </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button variant="primary" size="lg" disabled={busy} onClick={() => approve(request)} icon={<Check className="h-4 w-4" />}>
                       {isStoryboard(request.id) ? 'Approve storyboard' : 'Approve'}
@@ -211,6 +245,12 @@ export const BrollPanel: React.FC<BrollPanelProps> = ({ projectId, checklist, as
                     <Button variant="ghost" size="lg" disabled={busy} onClick={() => skip(request)} icon={<X className="h-4 w-4" />}>Skip</Button>
                   </div>
                 </div>
+              )}
+
+              {state === 'approved' && checklist.review_notes?.[request.id] && (
+                <p className="rounded-lg bg-app/50 px-3 py-2 text-sm text-fg-2" aria-label={`Your note on ${request.id}`}>
+                  Your note: {checklist.review_notes[request.id].text}
+                </p>
               )}
 
               {state === 'approved' && (

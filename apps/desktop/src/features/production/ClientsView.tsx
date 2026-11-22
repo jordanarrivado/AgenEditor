@@ -16,7 +16,8 @@ import { card, field, type ViewProps } from './ProductionWorkspace';
 type Option<T> = { value: T; label: string };
 const CREATIVE: { key: CreativeField; label: string; options?: Option<string>[]; kind: 'choice' | 'toggle' | 'text'; max?: number }[] = [
   { key: 'caption_preset', label: 'Caption style', kind: 'choice', options: [
-    { value: 'clean_white', label: 'Clean white' }, { value: 'bold_yellow', label: 'Bold yellow' }, { value: 'boxed', label: 'Boxed' }] },
+    { value: 'clean_white', label: 'Clean white' }, { value: 'bold_yellow', label: 'Bold yellow' }, { value: 'boxed', label: 'Boxed' },
+    { value: 'top_clean', label: 'Top, clean' }, { value: 'big_center', label: 'Bold, centred' }, { value: 'lower_minimal', label: 'Small, lower third' }] },
   { key: 'color_preset', label: 'Color', kind: 'choice', options: [
     { value: 'none', label: 'Untouched' }, { value: 'natural', label: 'Natural' }, { value: 'warm', label: 'Warm' }, { value: 'cool', label: 'Cool' }] },
   { key: 'pacing', label: 'Pacing', kind: 'choice', options: [

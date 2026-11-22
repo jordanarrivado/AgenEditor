@@ -48,6 +48,16 @@
           "default": true,
           "title": "Normalize",
           "type": "boolean"
+        },
+        "speech_repair": {
+          "default": "none",
+          "enum": [
+            "none",
+            "light",
+            "strong"
+          ],
+          "title": "Speech Repair",
+          "type": "string"
         }
       },
       "title": "AudioMix",
@@ -134,7 +144,10 @@
       "enum": [
         "clean_white",
         "bold_yellow",
-        "boxed"
+        "boxed",
+        "top_clean",
+        "big_center",
+        "lower_minimal"
       ],
       "title": "CaptionPreset",
       "type": "string"
@@ -428,6 +441,7 @@
         "A1",
         "A2",
         "A3",
+        "A4",
         "T1"
       ],
       "title": "TrackId",
@@ -601,6 +615,11 @@
   "properties": {
     "audio": {
       "$ref": "#/$defs/AudioMix"
+    },
+    "broll_color_match": {
+      "default": false,
+      "title": "Broll Color Match",
+      "type": "boolean"
     },
     "caption_preset": {
       "$ref": "#/$defs/CaptionPreset",

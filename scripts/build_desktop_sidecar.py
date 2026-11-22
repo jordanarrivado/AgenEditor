@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 
 from collect_notices import collect
@@ -26,7 +27,11 @@ def main() -> int:
         raise SystemExit("The Phase Four alpha build currently targets Windows x64")
     pyinstaller = Path(sys.executable).with_name("pyinstaller.exe")
     if not pyinstaller.is_file():
-        raise SystemExit("Install the desktop dependency group: uv sync --extra transcribe --group desktop")
+        raise SystemExit(
+            "Install the desktop dependency group: uv sync --extra transcribe --extra ai --group desktop"
+        )
+    if find_spec("anthropic") is None:
+        raise SystemExit("The desktop build needs the Anthropic SDK: uv sync --extra ai --group desktop")
     BINARIES.mkdir(parents=True, exist_ok=True)
     WORK.mkdir(parents=True, exist_ok=True)
     if (PINNED_FFMPEG / "ffmpeg.exe").is_file() and (PINNED_FFMPEG / "ffprobe.exe").is_file():
@@ -56,6 +61,8 @@ def main() -> int:
         "faster_whisper",
         "--collect-all",
         "ctranslate2",
+        "--collect-all",
+        "anthropic",
         *[arg for module in sorted(EXCLUDED_FROM_BUNDLE) for arg in ("--exclude-module", module)],
         str(ROOT / "scripts" / "desktop_sidecar.py"),
     ]

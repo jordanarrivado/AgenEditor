@@ -73,6 +73,59 @@ _COLOR_FILTERS: dict[ColorPreset, str] = {
 }
 
 
+#: Fixed speech clean-up chains (AudioMix.speech_repair); never built from agent text.
+_SPEECH_REPAIR = {
+    "none": "",
+    "light": "highpass=f=80,afftdn=nr=10:nf=-50",
+    "strong": "highpass=f=100,afftdn=nr=20:nf=-40,deesser=i=0.4",
+}
+#: B-roll colour matching moves halfway toward the primary footage, within these bounds.
+_MATCH_STRENGTH = Fraction(1, 2)
+_MATCH_LUMA_GAIN = (0.8, 1.25)
+_MATCH_CHROMA_SHIFT = 12.0
+
+
+def _color_means(
+    path: Path, start: Fraction, end: Fraction, still: bool, timeout: int
+) -> tuple[float, float, float]:
+    """Average 8-bit Y, U and V of a source range (about 2 frames a second), measured with signalstats."""
+    args = [str(find_tool("ffmpeg")), "-v", "info"]
+    if not still:
+        args += ["-ss", _seconds(start), "-t", _seconds(max(end - start, Fraction(1, 10)))]
+    args += [
+        "-i", str(path), "-an",
+        "-vf", ("" if still else "fps=2,") + "scale=160:-2,format=yuv420p,signalstats,metadata=mode=print",
+        "-frames:v", "1" if still else "60", "-f", "null", "-",
+    ]  # fmt: skip
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=min(timeout, 120), check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise EngineException(ErrorCode.RENDER_FAILED, "colour measurement timed out") from exc
+    values = {
+        key: [float(v) for v in re.findall(rf"lavfi\.signalstats\.{key}=([\d.]+)", result.stderr)]
+        for key in ("YAVG", "UAVG", "VAVG")
+    }
+    if result.returncode != 0 or not values["YAVG"]:
+        raise EngineException(ErrorCode.RENDER_FAILED, "could not measure clip colour")
+    return tuple(sum(v) / len(v) for v in (values["YAVG"], values["UAVG"], values["VAVG"]))  # type: ignore[return-value]
+
+
+def _match_filter(source: tuple[float, float, float], target: tuple[float, float, float]) -> str:
+    """A bounded lutyuv that moves ``source`` part of the way toward ``target``."""
+    strength = float(_MATCH_STRENGTH)
+    low, high = _MATCH_LUMA_GAIN
+    gain = 1 + (target[0] / max(source[0], 1.0) - 1) * strength
+    gain = min(high, max(low, gain))
+
+    def shift(index: int) -> float:
+        return min(_MATCH_CHROMA_SHIFT, max(-_MATCH_CHROMA_SHIFT, (target[index] - source[index]) * strength))
+
+    return (
+        f"format=yuv420p,lutyuv=y='clip(val*{gain:.4f},0,255)'"
+        f":u='clip(val+{shift(1):.2f},0,255)':v='clip(val+{shift(2):.2f},0,255)'"
+    )
+
+
 def _transition_graph(clips, transitions, pre: list[int], post: list[int], fps: Fraction) -> list[str]:
     """Join V1 clips into ``[basev]``: hard-cut runs are concatenated, runs are joined by ``xfade``.
 
@@ -270,13 +323,16 @@ def _render_timeline(
         (clip for clip in timeline.clips if clip.track is TrackId.V2), key=lambda c: c.timeline_in_frames
     )
     dialogue_overlays = [clip for clip in timeline.clips if clip.track is TrackId.A1]
+    voice_lines = sorted(
+        (clip for clip in timeline.clips if clip.track is TrackId.A4), key=lambda c: c.timeline_in_frames
+    )
     music = [clip for clip in timeline.clips if clip.track is TrackId.A2]
     effects = sorted(
         (clip for clip in timeline.clips if clip.track is TrackId.A3), key=lambda c: c.timeline_in_frames
     )
     mix = timeline.audio
     args = [str(find_tool("ffmpeg")), *_BASE_ARGS]
-    inputs = [*clips, *broll, *dialogue_overlays, *music, *effects]
+    inputs = [*clips, *broll, *dialogue_overlays, *voice_lines, *music, *effects]
     for clip in inputs:
         asset = assets[clip.asset_id]
         source = _verified_source(store, asset)
@@ -357,9 +413,26 @@ def _render_timeline(
     # V2: supplied B-roll replaces the picture only; the speaker's audio is never replaced.
     video_label = "basev"
     offset = len(clips)
+    measured: dict[tuple[str, Fraction, Fraction], tuple[float, float, float]] = {}
+
+    def means(asset, clip) -> tuple[float, float, float]:
+        path = store.safe_path(asset.relative_path)
+        start, end = source_interval(asset, clip, path, fps)
+        key = (asset.id, start, end)
+        if key not in measured:
+            measured[key] = _color_means(path, start, end, asset.kind is AssetKind.IMAGE, timeout)
+        return measured[key]
+
     for n, clip in enumerate(broll):
         asset = assets[clip.asset_id]
-        chain = f"{video_chain(offset + n, clip, asset)},format=yuva420p"
+        match = ""
+        if timeline.broll_color_match:
+            middle = (clip.timeline_in_frames + clip.timeline_out_frames) // 2
+            under = next(
+                (c for c in clips if c.timeline_in_frames <= middle < c.timeline_out_frames), clips[0]
+            )
+            match = "," + _match_filter(means(asset, clip), means(assets[under.asset_id], under))
+        chain = f"{video_chain(offset + n, clip, asset)}{match},format=yuva420p"
         if clip.fade_in_frames:
             chain += f",fade=t=in:s=0:n={clip.fade_in_frames}:alpha=1"
         if clip.fade_out_frames:
@@ -407,17 +480,22 @@ def _render_timeline(
             f"adelay=delays={delay}S:all=1[{label}]"
         )
 
+    # A1 dialogue overlays and A4 voice lines join the speech bus, so music ducks under both.
     dialogue = "dialogue0"
-    if dialogue_overlays:
+    speech = [*dialogue_overlays, *voice_lines]
+    if speech:
         labels = ["[dialogue0]"]
-        for n, clip in enumerate(dialogue_overlays):
+        for n, clip in enumerate(speech):
             placed_audio(offset + n, clip, assets[clip.asset_id], f"d{n}")
             labels.append(f"[d{n}]")
         audio.append(
             f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0:duration=first:dropout_transition=0[dialogue]"
         )
         dialogue = "dialogue"
-    offset += len(dialogue_overlays)
+    offset += len(speech)
+    if repair := _SPEECH_REPAIR[mix.speech_repair]:
+        audio.append(f"[{dialogue}]{repair}[speechfix]")
+        dialogue = "speechfix"
 
     mixed = dialogue
     if music:

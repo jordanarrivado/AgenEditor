@@ -148,6 +148,15 @@
           "minLength": 1,
           "title": "Text",
           "type": "string"
+        },
+        "timing": {
+          "default": "aligned",
+          "enum": [
+            "aligned",
+            "estimated"
+          ],
+          "title": "Timing",
+          "type": "string"
         }
       },
       "required": [

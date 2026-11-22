@@ -163,6 +163,13 @@ def submit_edit_plan(store: ProjectStore, plan: EditPlan, expected_revision: int
                 index,
             )
             continue
+        if cited[0].timing == "estimated" or cited[-1].timing == "estimated":
+            add(
+                ErrorCode.OUT_OF_CONTEXT,
+                "a cut boundary is on a word whose time was estimated, not aligned; check the cut by ear",
+                index,
+                "warning",
+            )
         if first > 0:
             previous_word = transcript.words[first - 1]
             if cited[0].start_us - previous_word.end_us < 800_000 and not previous_word.text.endswith(

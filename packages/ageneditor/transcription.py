@@ -37,6 +37,7 @@ from ageneditor.media.hashing import sha256_file
 from ageneditor.media.probe import probe
 from ageneditor.media.tools import find_tool
 from ageneditor.storage import ProjectStore
+from ageneditor.word_timing import RawWord, time_segment
 
 TRANSCRIBE_TIMEOUT_S = 1800
 #: Hidden engine CLI command that runs :func:`worker_main` (the packaged exe has no ``-m``).
@@ -168,25 +169,37 @@ def transcribe_local(
         words: list[TranscriptWord] = []
         segments: list[TranscriptSegment] = []
         detected, info = model.transcribe(samples, word_timestamps=True, vad_filter=True, beam_size=5)
+
+        def source_us(seconds: float | None) -> int | None:
+            if seconds is None:
+                return None
+            return min(duration_us, max(0, _microseconds(seconds) + offset_us))
+
         for segment in detected:
             segment_words: list[TranscriptWord] = []
             segment_id = f"segment_{len(segments):06d}"
-            for item in segment.words or []:
-                text = item.word.strip()
-                if not text or item.start is None or item.end is None:
-                    continue
-                start = max(0, _microseconds(item.start) + offset_us)
-                end = min(duration_us, _microseconds(item.end) + offset_us)
-                if end <= start:
-                    continue
+            # Words without usable times are estimated within the segment instead of being dropped.
+            timed = time_segment(
+                [
+                    RawWord(item.word, source_us(item.start), source_us(item.end), item.probability)
+                    for item in segment.words or []
+                ],
+                segment.text or "",
+                source_us(getattr(segment, "start", None)),
+                source_us(getattr(segment, "end", None)),
+            )
+            if timed and words and timed[0].start_us < words[-1].start_us:
+                timed = []  # a segment that runs backwards in time cannot be placed safely
+            for item in timed:
                 segment_words.append(
                     TranscriptWord(
                         id=f"word_{len(words) + len(segment_words):07d}",
                         segment_id=segment_id,
-                        text=text,
-                        start_us=start,
-                        end_us=end,
+                        text=item.text,
+                        start_us=item.start_us,
+                        end_us=item.end_us,
                         probability=item.probability,
+                        timing="estimated" if item.estimated else "aligned",
                     )
                 )
             if segment_words:

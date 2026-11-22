@@ -2,7 +2,7 @@
   "$defs": {
     "AddOverlay": {
       "additionalProperties": false,
-      "description": "Place a registered B-roll (V2), music (A2) or sound-effect (A3) asset. V1 uses plans and trims.",
+      "description": "Place a registered B-roll (V2), music (A2), sound-effect (A3) or voice-line (A4) asset.\n\nV1 uses plans and trims.",
       "properties": {
         "clip": {
           "$ref": "#/$defs/Clip"
@@ -68,6 +68,16 @@
           "default": true,
           "title": "Normalize",
           "type": "boolean"
+        },
+        "speech_repair": {
+          "default": "none",
+          "enum": [
+            "none",
+            "light",
+            "strong"
+          ],
+          "title": "Speech Repair",
+          "type": "string"
         }
       },
       "title": "AudioMix",
@@ -106,7 +116,10 @@
       "enum": [
         "clean_white",
         "bold_yellow",
-        "boxed"
+        "boxed",
+        "top_clean",
+        "big_center",
+        "lower_minimal"
       ],
       "title": "CaptionPreset",
       "type": "string"
@@ -532,6 +545,18 @@
     "SetColorPreset": {
       "additionalProperties": false,
       "properties": {
+        "broll_color_match": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Broll Color Match"
+        },
         "op": {
           "const": "set_color_preset",
           "default": "set_color_preset",
@@ -592,6 +617,7 @@
         "A1",
         "A2",
         "A3",
+        "A4",
         "T1"
       ],
       "title": "TrackId",

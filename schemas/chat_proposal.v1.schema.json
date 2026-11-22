@@ -1,0 +1,1035 @@
+{
+  "$defs": {
+    "AudioMix": {
+      "additionalProperties": false,
+      "description": "Bounded mix settings compiled into fixed FFmpeg filters (spec \u00a710 audio target).",
+      "properties": {
+        "duck_attack_ms": {
+          "default": 20,
+          "maximum": 2000,
+          "minimum": 1,
+          "title": "Duck Attack Ms",
+          "type": "integer"
+        },
+        "duck_music": {
+          "default": true,
+          "title": "Duck Music",
+          "type": "boolean"
+        },
+        "duck_ratio": {
+          "default": 8.0,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Duck Ratio",
+          "type": "number"
+        },
+        "duck_release_ms": {
+          "default": 400,
+          "maximum": 9000,
+          "minimum": 10,
+          "title": "Duck Release Ms",
+          "type": "integer"
+        },
+        "duck_threshold_db": {
+          "default": -30.0,
+          "maximum": -6,
+          "minimum": -60,
+          "title": "Duck Threshold Db",
+          "type": "number"
+        },
+        "edge_fade_ms": {
+          "default": 12,
+          "maximum": 200,
+          "minimum": 0,
+          "title": "Edge Fade Ms",
+          "type": "integer"
+        },
+        "normalize": {
+          "default": true,
+          "title": "Normalize",
+          "type": "boolean"
+        },
+        "speech_repair": {
+          "default": "none",
+          "enum": [
+            "none",
+            "light",
+            "strong"
+          ],
+          "title": "Speech Repair",
+          "type": "string"
+        }
+      },
+      "title": "AudioMix",
+      "type": "object"
+    },
+    "Author": {
+      "enum": [
+        "user",
+        "agent",
+        "system"
+      ],
+      "title": "Author",
+      "type": "string"
+    },
+    "CaptionCue": {
+      "additionalProperties": false,
+      "properties": {
+        "corrected": {
+          "default": false,
+          "title": "Corrected",
+          "type": "boolean"
+        },
+        "cue_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Cue Id",
+          "type": "string"
+        },
+        "source_asset_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Source Asset Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 200,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x09\\x0b-\\x1f\\x7f]+$",
+          "title": "Text",
+          "type": "string"
+        },
+        "timeline_in_frames": {
+          "minimum": 0,
+          "title": "Timeline In Frames",
+          "type": "integer"
+        },
+        "timeline_out_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Timeline Out Frames",
+          "type": "integer"
+        },
+        "transcript_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transcript Id"
+        },
+        "word_ids": {
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+            "type": "string"
+          },
+          "title": "Word Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "cue_id",
+        "text",
+        "timeline_in_frames",
+        "timeline_out_frames",
+        "source_asset_id"
+      ],
+      "title": "CaptionCue",
+      "type": "object"
+    },
+    "CaptionPreset": {
+      "description": "Enumerated burn-in styles (two lines max, phone-safe margins). Never free-form ASS/filters.",
+      "enum": [
+        "clean_white",
+        "bold_yellow",
+        "boxed",
+        "top_clean",
+        "big_center",
+        "lower_minimal"
+      ],
+      "title": "CaptionPreset",
+      "type": "string"
+    },
+    "Clip": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "clip_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "fade_in_frames": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Fade In Frames",
+          "type": "integer"
+        },
+        "fade_out_frames": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Fade Out Frames",
+          "type": "integer"
+        },
+        "fit_mode": {
+          "$ref": "#/$defs/FitMode",
+          "default": "cover"
+        },
+        "gain_db": {
+          "default": 0.0,
+          "maximum": 12,
+          "minimum": -60,
+          "title": "Gain Db",
+          "type": "number"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        },
+        "source_in_frames": {
+          "minimum": 0,
+          "title": "Source In Frames",
+          "type": "integer"
+        },
+        "source_out_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Source Out Frames",
+          "type": "integer"
+        },
+        "timeline_duration_frames": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeline Duration Frames"
+        },
+        "timeline_in_frames": {
+          "minimum": 0,
+          "title": "Timeline In Frames",
+          "type": "integer"
+        },
+        "track": {
+          "$ref": "#/$defs/TrackId"
+        },
+        "transform": {
+          "$ref": "#/$defs/Transform"
+        }
+      },
+      "required": [
+        "clip_id",
+        "asset_id",
+        "track",
+        "source_in_frames",
+        "source_out_frames",
+        "timeline_in_frames"
+      ],
+      "title": "Clip",
+      "type": "object"
+    },
+    "ColorPreset": {
+      "description": "Fixed, gentle grade presets applied after compositing. ``none`` leaves pixels untouched.",
+      "enum": [
+        "none",
+        "natural",
+        "warm",
+        "cool"
+      ],
+      "title": "ColorPreset",
+      "type": "string"
+    },
+    "EditPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "brief": {
+          "maxLength": 2000,
+          "minLength": 10,
+          "title": "Brief",
+          "type": "string"
+        },
+        "project_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "segments": {
+          "items": {
+            "$ref": "#/$defs/PlanSegment"
+          },
+          "maxItems": 5,
+          "minItems": 2,
+          "title": "Segments",
+          "type": "array"
+        },
+        "target_duration_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Target Duration Frames",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "project_id",
+        "target_duration_frames",
+        "brief",
+        "segments"
+      ],
+      "title": "EditPlan",
+      "type": "object"
+    },
+    "EncoderPreset": {
+      "enum": [
+        "fast",
+        "balanced",
+        "quality"
+      ],
+      "title": "EncoderPreset",
+      "type": "string"
+    },
+    "ErrorCode": {
+      "description": "Structured error codes returned by engine services and MCP tools (spec \u00a76).",
+      "enum": [
+        "ASSET_NOT_FOUND",
+        "RANGE_OUT_OF_BOUNDS",
+        "REVISION_CONFLICT",
+        "SOURCE_CHANGED",
+        "UNSUPPORTED_CODEC",
+        "RENDER_FAILED",
+        "QA_FAILED",
+        "PERMISSION_DENIED",
+        "INVALID_TIMELINE",
+        "PROBE_FAILED",
+        "PROJECT_NOT_FOUND",
+        "JOB_NOT_FOUND",
+        "JOB_CANCELED",
+        "INVALID_ARGUMENT",
+        "TRANSCRIPTION_FAILED",
+        "TRANSCRIPT_NOT_FOUND",
+        "SOURCE_INSUFFICIENT",
+        "PLAN_RETRY_LIMIT",
+        "OUT_OF_CONTEXT",
+        "INSUFFICIENT_DISK",
+        "DOWNLOAD_FAILED",
+        "LEASE_EXPIRED",
+        "STALE_FENCE",
+        "RATE_LIMITED",
+        "PROVIDER_UNAVAILABLE",
+        "BUDGET_EXCEEDED",
+        "NO_CAPABLE_WORKER",
+        "TASK_TIMEOUT",
+        "ADAPTER_FAILED",
+        "INVALID_STATE_TRANSITION",
+        "APPROVAL_REQUIRED",
+        "DELIVERY_FAILED",
+        "HUMAN_DECISION_REQUIRED"
+      ],
+      "title": "ErrorCode",
+      "type": "string"
+    },
+    "FitMode": {
+      "enum": [
+        "cover",
+        "contain"
+      ],
+      "title": "FitMode",
+      "type": "string"
+    },
+    "FrameRate": {
+      "description": "Exact rational frame rate, e.g. 30/1 or 30000/1001.",
+      "properties": {
+        "den": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Den",
+          "type": "integer"
+        },
+        "num": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Num",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "num"
+      ],
+      "title": "FrameRate",
+      "type": "object"
+    },
+    "PlanDisposition": {
+      "enum": [
+        "valid",
+        "retry",
+        "manual_review",
+        "source_insufficient"
+      ],
+      "title": "PlanDisposition",
+      "type": "string"
+    },
+    "PlanResult": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "candidate_timeline": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timeline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "disposition": {
+          "$ref": "#/$defs/PlanDisposition"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/ValidationIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "valid",
+        "disposition",
+        "attempt"
+      ],
+      "title": "PlanResult",
+      "type": "object"
+    },
+    "PlanSegment": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "first_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "First Word Id",
+          "type": "string"
+        },
+        "last_word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Last Word Id",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 1000,
+          "minLength": 10,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        },
+        "source_in_frames": {
+          "minimum": 0,
+          "title": "Source In Frames",
+          "type": "integer"
+        },
+        "source_out_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Source Out Frames",
+          "type": "integer"
+        },
+        "transcript_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Transcript Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "transcript_id",
+        "first_word_id",
+        "last_word_id",
+        "source_in_frames",
+        "source_out_frames",
+        "rationale",
+        "score"
+      ],
+      "title": "PlanSegment",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "author": {
+          "$ref": "#/$defs/Author"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Summary",
+          "type": "string"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        }
+      },
+      "required": [
+        "author"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "RenderProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "audio_channels": {
+          "default": 2,
+          "enum": [
+            1,
+            2
+          ],
+          "title": "Audio Channels",
+          "type": "integer"
+        },
+        "audio_codec": {
+          "const": "aac",
+          "default": "aac",
+          "title": "Audio Codec",
+          "type": "string"
+        },
+        "audio_sample_rate": {
+          "default": 48000,
+          "enum": [
+            44100,
+            48000
+          ],
+          "title": "Audio Sample Rate",
+          "type": "integer"
+        },
+        "container": {
+          "const": "mp4",
+          "default": "mp4",
+          "title": "Container",
+          "type": "string"
+        },
+        "frame_rate": {
+          "$ref": "#/$defs/FrameRate"
+        },
+        "height": {
+          "maximum": 7680,
+          "minimum": 16,
+          "title": "Height",
+          "type": "integer"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "loudness_lufs": {
+          "default": -16.0,
+          "maximum": -5,
+          "minimum": -40,
+          "title": "Loudness Lufs",
+          "type": "number"
+        },
+        "pixel_format": {
+          "const": "yuv420p",
+          "default": "yuv420p",
+          "title": "Pixel Format",
+          "type": "string"
+        },
+        "preset": {
+          "$ref": "#/$defs/EncoderPreset",
+          "default": "balanced"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "true_peak_dbtp": {
+          "default": -1.0,
+          "maximum": 0,
+          "minimum": -10,
+          "title": "True Peak Dbtp",
+          "type": "number"
+        },
+        "video_codec": {
+          "const": "h264",
+          "default": "h264",
+          "title": "Video Codec",
+          "type": "string"
+        },
+        "width": {
+          "maximum": 7680,
+          "minimum": 16,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "width",
+        "height",
+        "frame_rate"
+      ],
+      "title": "RenderProfile",
+      "type": "object"
+    },
+    "Timeline": {
+      "additionalProperties": false,
+      "properties": {
+        "audio": {
+          "$ref": "#/$defs/AudioMix"
+        },
+        "broll_color_match": {
+          "default": false,
+          "title": "Broll Color Match",
+          "type": "boolean"
+        },
+        "caption_preset": {
+          "$ref": "#/$defs/CaptionPreset",
+          "default": "clean_white"
+        },
+        "captions": {
+          "items": {
+            "$ref": "#/$defs/CaptionCue"
+          },
+          "title": "Captions",
+          "type": "array"
+        },
+        "clips": {
+          "items": {
+            "$ref": "#/$defs/Clip"
+          },
+          "title": "Clips",
+          "type": "array"
+        },
+        "color_preset": {
+          "$ref": "#/$defs/ColorPreset",
+          "default": "none"
+        },
+        "parent_revision": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Revision"
+        },
+        "project_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "render_profile": {
+          "$ref": "#/$defs/RenderProfile"
+        },
+        "revision": {
+          "minimum": 0,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_duration_frames": {
+          "exclusiveMinimum": 0,
+          "title": "Target Duration Frames",
+          "type": "integer"
+        },
+        "transitions": {
+          "items": {
+            "$ref": "#/$defs/Transition"
+          },
+          "maxItems": 200,
+          "title": "Transitions",
+          "type": "array"
+        },
+        "word_corrections": {
+          "items": {
+            "$ref": "#/$defs/WordCorrection"
+          },
+          "maxItems": 2000,
+          "title": "Word Corrections",
+          "type": "array"
+        }
+      },
+      "required": [
+        "project_id",
+        "revision",
+        "target_duration_frames",
+        "render_profile",
+        "provenance"
+      ],
+      "title": "Timeline",
+      "type": "object"
+    },
+    "TrackId": {
+      "enum": [
+        "V1",
+        "V2",
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "T1"
+      ],
+      "title": "TrackId",
+      "type": "string"
+    },
+    "Transform": {
+      "additionalProperties": false,
+      "properties": {
+        "center_x": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Center X",
+          "type": "number"
+        },
+        "center_y": {
+          "default": 0.5,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Center Y",
+          "type": "number"
+        },
+        "scale": {
+          "default": 1.0,
+          "maximum": 2.0,
+          "minimum": 1.0,
+          "title": "Scale",
+          "type": "number"
+        }
+      },
+      "title": "Transform",
+      "type": "object"
+    },
+    "Transition": {
+      "additionalProperties": false,
+      "description": "A transition across the cut after one V1 clip. Total duration is unchanged: the\ntransition uses half its length from just past the outgoing clip and half from just\nbefore the incoming clip (source handles when available, otherwise a held frame).",
+      "properties": {
+        "after_clip_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "After Clip Id",
+          "type": "string"
+        },
+        "duration_frames": {
+          "maximum": 60,
+          "minimum": 2,
+          "title": "Duration Frames",
+          "type": "integer"
+        },
+        "preset": {
+          "$ref": "#/$defs/TransitionName"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        }
+      },
+      "required": [
+        "after_clip_id",
+        "preset",
+        "duration_frames"
+      ],
+      "title": "Transition",
+      "type": "object"
+    },
+    "TransitionName": {
+      "enum": [
+        "cross_dissolve",
+        "fast_dissolve",
+        "dip_to_black",
+        "dip_to_white",
+        "grain_dissolve",
+        "wipe_left",
+        "wipe_right",
+        "wipe_up",
+        "wipe_down",
+        "slide_left",
+        "slide_right",
+        "slide_up",
+        "slide_down",
+        "smooth_left",
+        "smooth_right",
+        "smooth_up",
+        "smooth_down",
+        "cover_left",
+        "cover_right",
+        "cover_up",
+        "cover_down",
+        "reveal_left",
+        "reveal_right",
+        "reveal_up",
+        "reveal_down",
+        "squeeze_horizontal",
+        "squeeze_vertical",
+        "zoom_in",
+        "pixelize",
+        "radial_sweep",
+        "circle_crop",
+        "rect_crop",
+        "diagonal_top_left",
+        "diagonal_top_right",
+        "diagonal_bottom_left",
+        "diagonal_bottom_right",
+        "corner_wipe_top_left",
+        "corner_wipe_top_right",
+        "corner_wipe_bottom_left",
+        "corner_wipe_bottom_right",
+        "slice_left",
+        "slice_right",
+        "slice_up",
+        "slice_down",
+        "wind_left",
+        "wind_right",
+        "wind_up",
+        "wind_down",
+        "slow_fade",
+        "fade_through_gray",
+        "blur_dissolve",
+        "distance_morph",
+        "iris_open",
+        "iris_close",
+        "bars_open_horizontal",
+        "bars_close_horizontal",
+        "bars_open_vertical",
+        "bars_close_vertical"
+      ],
+      "title": "TransitionName",
+      "type": "string"
+    },
+    "ValidationIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clip Id"
+        },
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "details": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Details",
+          "type": "object"
+        },
+        "message": {
+          "maxLength": 2000,
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "default": "error",
+          "enum": [
+            "error",
+            "warning"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ValidationIssue",
+      "type": "object"
+    },
+    "WordCorrection": {
+      "additionalProperties": false,
+      "description": "A versioned manual fix to one transcript word's caption text. Timing stays source-derived.",
+      "properties": {
+        "text": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "title": "Text",
+          "type": "string"
+        },
+        "transcript_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Transcript Id",
+          "type": "string"
+        },
+        "word_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Word Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transcript_id",
+        "word_id",
+        "text"
+      ],
+      "title": "WordCorrection",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/chat_proposal.v1.json",
+  "additionalProperties": false,
+  "description": "A validated (or refused) plan from the chat, pinned to the revision it was made against.",
+  "properties": {
+    "applied_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applied Revision"
+    },
+    "base_revision": {
+      "minimum": 0,
+      "title": "Base Revision",
+      "type": "integer"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "plan": {
+      "$ref": "#/$defs/EditPlan"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "result": {
+      "$ref": "#/$defs/PlanResult"
+    },
+    "status": {
+      "default": "proposed",
+      "enum": [
+        "proposed",
+        "applied",
+        "stale",
+        "rejected"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "project_id",
+    "base_revision",
+    "plan",
+    "result"
+  ],
+  "title": "ChatProposal",
+  "type": "object"
+}

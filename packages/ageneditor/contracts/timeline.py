@@ -23,11 +23,12 @@ class TrackId(StrEnum):
     A1 = "A1"  # dialogue
     A2 = "A2"  # supplied music
     A3 = "A3"  # sound effects from the user's sound library; clips may overlap
+    A4 = "A4"  # voice lines (voice-over); music ducks under them like under dialogue
     T1 = "T1"  # captions
 
 
 VIDEO_TRACKS = {TrackId.V1, TrackId.V2}
-AUDIO_TRACKS = {TrackId.A1, TrackId.A2, TrackId.A3}
+AUDIO_TRACKS = {TrackId.A1, TrackId.A2, TrackId.A3, TrackId.A4}
 #: Which asset roles may be placed on which track (only registered assets of the right kind).
 TRACK_ROLES: dict[TrackId, set[AssetRole]] = {
     TrackId.V1: {AssetRole.PRIMARY},
@@ -35,6 +36,7 @@ TRACK_ROLES: dict[TrackId, set[AssetRole]] = {
     TrackId.A1: {AssetRole.PRIMARY},
     TrackId.A2: {AssetRole.MUSIC},
     TrackId.A3: {AssetRole.SFX},
+    TrackId.A4: {AssetRole.VOICE},
 }
 #: Each placed sound effect is one FFmpeg input; keep renders bounded.
 MAX_SFX_CLIPS = 100
@@ -98,6 +100,10 @@ class CaptionPreset(StrEnum):
     CLEAN_WHITE = "clean_white"
     BOLD_YELLOW = "bold_yellow"
     BOXED = "boxed"
+    #: Added 2026-11-21: top of the safe area; bold and centred; small lower third without a box.
+    TOP_CLEAN = "top_clean"
+    BIG_CENTER = "big_center"
+    LOWER_MINIMAL = "lower_minimal"
 
 
 class ColorPreset(StrEnum):
@@ -160,6 +166,9 @@ class AudioMix(ContractModel):
     duck_ratio: float = Field(default=8.0, ge=1, le=20)
     duck_attack_ms: int = Field(default=20, ge=1, le=2000)
     duck_release_ms: int = Field(default=400, ge=10, le=9000)
+    #: Fixed clean-up chains on the speech bus (V1 audio, A1 and A4) before ducking: high-pass and FFT
+    #: denoise, plus a de-esser for ``strong``. ``none`` leaves the speech untouched.
+    speech_repair: Literal["none", "light", "strong"] = "none"
 
 
 class Author(StrEnum):
@@ -187,6 +196,9 @@ class Timeline(ContractModel):
     caption_preset: CaptionPreset = CaptionPreset.CLEAN_WHITE
     word_corrections: list[WordCorrection] = Field(default_factory=list, max_length=2000)
     color_preset: ColorPreset = ColorPreset.NONE
+    #: Move each B-roll clip halfway toward the average brightness and tint of the primary footage under
+    #: it (measured at render time, bounded). Off by default.
+    broll_color_match: bool = False
     audio: AudioMix = Field(default_factory=AudioMix)
     #: Transitions across V1 cuts; a cut without one stays a hard cut.
     transitions: list[Transition] = Field(default_factory=list, max_length=200)
@@ -219,7 +231,7 @@ class Timeline(ContractModel):
         if sum(c.track is TrackId.A3 for c in self.clips) > MAX_SFX_CLIPS:
             raise ValueError(f"at most {MAX_SFX_CLIPS} sound effects per timeline")
         # A3 is deliberately absent: sound effects may overlap each other.
-        for track in (TrackId.V2, TrackId.A1, TrackId.A2):
+        for track in (TrackId.V2, TrackId.A1, TrackId.A2, TrackId.A4):
             spans = sorted(
                 (c.timeline_in_frames, c.timeline_out_frames) for c in self.clips if c.track is track
             )

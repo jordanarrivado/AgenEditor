@@ -33,6 +33,9 @@ class AssetRole(StrEnum):
     REFERENCE = "reference"
     #: A short audio-only sound effect from the user's sound library (track A3).
     SFX = "sfx"
+    #: An audio-only voice line (voice-over), recorded by the user or generated in an outside tool
+    #: (track A4). Never the primary speaker, never transcribed as source dialogue.
+    VOICE = "voice"
 
 
 class AssetOrigin(StrEnum):

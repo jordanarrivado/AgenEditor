@@ -215,7 +215,7 @@ class DesktopService:
                             "SELECT id, name, created_at, current_revision FROM project"
                         ).fetchone()
                     if row:
-                        projects.append(dict(row))
+                        projects.append({**dict(row), "archived": store.setting("archived") == "1"})
                 except (EngineException, sqlite3.Error):
                     continue
             return sorted(projects, key=lambda item: item["created_at"], reverse=True)
@@ -240,6 +240,24 @@ class DesktopService:
             from ageneditor.transcription import speech_models_cached
 
             return speech_models_cached()
+        if operation in {"chat_set_key", "chat_remove_key"}:
+            from ageneditor import credentials
+            from ageneditor.contracts.chat import ChatProvider
+
+            provider = ChatProvider(str(args["provider"]))
+            if operation == "chat_set_key":
+                credentials.set_key(provider.value, str(args["key"]))
+            else:
+                credentials.remove_key(provider.value)
+            return {"provider": provider.value, "has_key": credentials.has_key(provider.value)}
+        if operation in {"list_editor_presets", "delete_editor_preset"}:
+            from ageneditor.editor_presets import EditorPresetStore
+
+            presets = EditorPresetStore(self.workspace)
+            if operation == "delete_editor_preset":
+                library = presets.delete(str(args["preset_id"]), int(args["expected_version"]))
+                return library.model_dump(mode="json")
+            return presets.load().model_dump(mode="json")
         if operation in {"list_transition_styles", "set_active_transition_style"}:
             from ageneditor.contracts.transition import TransitionStyle
             from ageneditor.transitions import TransitionLibrary
@@ -266,6 +284,76 @@ class DesktopService:
                 str(args["request_id"]), str(args["asset_id"]), int(args["expected_version"])
             )
             return saved.model_dump(mode="json")
+        if operation in {"chat_status", "chat_history", "chat_set_consent", "chat_send", "chat_apply"}:
+            return self._chat_call(store, operation, args)
+        if operation == "rename_project":
+            store.rename(str(args["name"]))
+            return {"project_id": project_id, "name": str(args["name"]).strip()}
+        if operation == "set_project_archived":
+            store.set_setting("archived", "1" if args.get("archived") else None)
+            return {"project_id": project_id, "archived": bool(args.get("archived"))}
+        if operation == "save_editor_preset":
+            from ageneditor.editor_presets import EditorPresetStore
+
+            library = EditorPresetStore(self.workspace).save_from_project(
+                store, str(args["name"]), int(args["expected_version"])
+            )
+            return library.model_dump(mode="json")
+        if operation == "choose_editor_preset":
+            from ageneditor.editor_presets import EditorPresetStore
+
+            preset_id = args.get("preset_id")
+            if preset_id is not None:
+                EditorPresetStore(self.workspace).get(str(preset_id))
+            store.set_setting("editor_preset_id", None if preset_id is None else str(preset_id))
+            return {"project_id": project_id, "editor_preset_id": preset_id}
+        if operation == "project_settings":
+            return {
+                "archived": store.setting("archived") == "1",
+                "editor_preset_id": store.setting("editor_preset_id"),
+                "client_name": store.setting("client_name"),
+            }
+        if operation == "export_otio":
+            from ageneditor.otio import export_otio
+
+            revision = args.get("revision")
+            timeline = store.timeline(None if revision is None else int(revision))
+            with store._connect() as db:
+                name = str(db.execute("SELECT name FROM project").fetchone()[0])
+            return {"text": export_otio(store, timeline, name), "revision": timeline.revision}
+        if operation == "import_otio":
+            from ageneditor.otio import import_otio
+
+            expected = int(args["expected_revision"])
+            candidate, issues = import_otio(store, str(args["text"]), store.timeline(expected))
+            errors = [issue for issue in issues if issue.severity == "error"]
+            committed = None
+            if candidate is not None and not errors:
+                committed = store.commit_timeline(candidate, expected).revision
+            return {
+                "committed_revision": committed,
+                "clip_count": len(candidate.clips) if candidate else 0,
+                "issues": [issue.model_dump(mode="json") for issue in issues],
+            }
+        if operation == "list_variants":
+            from ageneditor.variants import VariantService
+
+            service = VariantService(store)
+            items = []
+            for variant in service.list():
+                view = service.view(variant.id)
+                items.append(
+                    {
+                        "variant": variant.model_dump(mode="json"),
+                        "main_revision": view.main_revision,
+                        "duration_frames": view.timeline.duration_frames if view.timeline else None,
+                        "renderable": view.renderable,
+                        "errors": [i.message for i in view.issues if i.severity == "error"],
+                        "warnings": [i.message for i in view.issues if i.severity == "warning"],
+                        "pending_requests": view.pending_requests,
+                    }
+                )
+            return items
         if operation == "get_brief":
             return store.brief().model_dump(mode="json")
         if operation == "save_brief":
@@ -277,7 +365,12 @@ class DesktopService:
             )
             return saved.model_dump(mode="json")
         if operation == "approve_asset_request":
-            saved = store.approve_asset_request(str(args["request_id"]), int(args["expected_version"]))
+            note = args.get("note")
+            saved = store.approve_asset_request(
+                str(args["request_id"]),
+                int(args["expected_version"]),
+                None if note is None else str(note),
+            )
             return saved.model_dump(mode="json")
         if operation == "reset_asset_request":
             saved = store.reset_asset_request(str(args["request_id"]), int(args["expected_version"]))
@@ -359,6 +452,21 @@ class DesktopService:
                 "end_us": round(end * 1_000_000),
                 "output_frames": seconds_to_frames_round(end - start, timeline.render_profile.frame_rate),
             }
+        if operation == "preview_qa":
+            from ageneditor.media.preview_qa import get_preview_qa, run_preview_qa
+
+            job_id = str(args["job_id"])
+            report = run_preview_qa(store, job_id) if args.get("run") else get_preview_qa(store, job_id)
+            if report is None:
+                return {"report": None, "grid_path": None}
+            grid = str(store.safe_path(report.frame_grid_path)) if report.frame_grid_path else None
+            return {"report": report.model_dump(mode="json"), "grid_path": grid}
+        if operation == "delivery_plan":
+            from ageneditor.delivery import delivery_plan
+
+            client = args.get("client")
+            plan = delivery_plan(store, list(args["job_ids"]), None if client is None else str(client))
+            return plan.model_dump(mode="json")
         if operation == "render_path":
             job = store.get_job(str(args["job_id"]))
             if job.status.value != "succeeded" or not job.output_path:
@@ -371,6 +479,51 @@ class DesktopService:
                     raise EngineException(ErrorCode.QA_FAILED, "final render did not pass technical QA")
             return {"path": str(store.safe_path(job.output_path))}
         raise EngineException(ErrorCode.INVALID_ARGUMENT, "unknown desktop operation")
+
+    def _chat_call(self, store: ProjectStore, operation: str, args: dict[str, Any]) -> Any:
+        """Built-in chat (Phase 6). Keys stay in the credential store; the page never receives one."""
+        from ageneditor import chat, credentials
+        from ageneditor.chat_providers import DEFAULT_MODELS, complete
+        from ageneditor.contracts.chat import ChatProvider
+
+        if operation == "chat_status":
+            keys = {}
+            for provider in ChatProvider:
+                try:
+                    keys[provider.value] = credentials.has_key(provider.value)
+                except EngineException:
+                    keys[provider.value] = False
+            return {
+                "consent": store.setting("chat_consent") == "1",
+                "keys": keys,
+                "default_models": {p.value: m for p, m in DEFAULT_MODELS.items()},
+                "data_sent": chat.DATA_SENT,
+            }
+        if operation == "chat_set_consent":
+            store.set_setting("chat_consent", "1" if args.get("consent") else None)
+            return {"consent": bool(args.get("consent"))}
+        if operation == "chat_history":
+            return {
+                "messages": [m.model_dump(mode="json") for m in chat.history(store)],
+                "proposals": [
+                    p.model_dump(mode="json", exclude={"result": {"candidate_timeline"}})
+                    for p in chat.proposals(store)
+                ],
+            }
+        if operation == "chat_apply":
+            applied = chat.apply_proposal(store, str(args["proposal_id"]), int(args["expected_revision"]))
+            return applied.model_dump(mode="json", exclude={"result": {"candidate_timeline"}})
+        provider = ChatProvider(str(args["provider"]))
+        model = str(args.get("model") or DEFAULT_MODELS[provider])
+        key = credentials.get_key(provider.value)
+        if not key:
+            raise EngineException(ErrorCode.PERMISSION_DENIED, f"add a {provider.value} API key first")
+
+        def ask(system: str, messages: list[tuple[str, str]]) -> str:
+            return complete(provider, model, key, system, messages)
+
+        turn = chat.send(store, provider, model, str(args["text"]), ask)
+        return turn.model_dump(mode="json", exclude={"proposal": {"result": {"candidate_timeline"}}})
 
     def _sound_library_call(self, operation: str, args: dict[str, Any]) -> Any:
         from ageneditor.contracts.sound_library import SoundLicense

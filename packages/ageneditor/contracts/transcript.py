@@ -24,6 +24,12 @@ class TranscriptWord(ContractModel):
     start_us: int = Field(ge=0)
     end_us: int = Field(gt=0)
     probability: float | None = Field(default=None, ge=0, le=1)
+    #: ``estimated``: the recognizer returned this word without usable times, so its times were shared out
+    #: by syllables within its segment (see ``word_timing``). Omitted when aligned, so aligned transcripts
+    #: keep their existing wire format.
+    timing: Literal["aligned", "estimated"] = Field(
+        default="aligned", exclude_if=lambda value: value == "aligned"
+    )
 
     @model_validator(mode="after")
     def _range(self) -> TranscriptWord:

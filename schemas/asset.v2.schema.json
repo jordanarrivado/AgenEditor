@@ -64,7 +64,8 @@
         "logo",
         "subtitles",
         "reference",
-        "sfx"
+        "sfx",
+        "voice"
       ],
       "title": "AssetRole",
       "type": "string"

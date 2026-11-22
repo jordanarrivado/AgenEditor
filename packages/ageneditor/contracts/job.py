@@ -42,6 +42,10 @@ class Job(ContractModel):
     #: Timeline revision this job is pinned to (renders/QA). Rendering never reads "latest".
     timeline_revision: int | None = Field(default=None, ge=0)
     output_path: ProjectRelativePath | None = None
+    #: Variant renders: the variant and its revision, computed against ``timeline_revision`` of the
+    #: main edit. Omitted for main-edit jobs so their wire format is unchanged.
+    variant_id: Identifier | None = Field(default=None, exclude_if=lambda value: value is None)
+    variant_revision: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
     error: EngineError | None = None
     created_at: datetime = Field(default_factory=utcnow)
     started_at: datetime | None = None
@@ -57,6 +61,8 @@ class Job(ContractModel):
             raise ValueError("succeeded jobs cannot carry an error")
         if self.kind in {JobKind.PREVIEW_RENDER, JobKind.FINAL_RENDER} and self.timeline_revision is None:
             raise ValueError("render jobs must pin a timeline_revision")
+        if (self.variant_id is None) != (self.variant_revision is None):
+            raise ValueError("a variant job names both the variant and its revision")
         return self
 
     @property

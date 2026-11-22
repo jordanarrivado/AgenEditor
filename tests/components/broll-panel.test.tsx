@@ -129,3 +129,64 @@ describe('B-roll panel', () => {
     expect(engine.removeAsset).not.toHaveBeenCalled();
   });
 });
+
+describe('voice-line requests', () => {
+  const voice = { id: 'voice_01', kind: 'audio' as const, purpose: 'Intro narration', prompt: 'Warm, calm, medium pace', aspect: '9:16', line: 'Three tips for better sleep.' };
+  const voiceList = (extra: Partial<EngineAssetChecklist> = {}) => checklist({ requests: [voice], ...extra });
+
+  it('shows the exact words and copies them with the direction for Google AI Studio', async () => {
+    renderPanel(voiceList());
+    expect(card('voice_01').getByText('Voice line · Google AI Studio')).toBeInTheDocument();
+    expect(card('voice_01').getByLabelText('Words for voice_01')).toHaveTextContent('Three tips for better sleep.');
+    fireEvent.click(card('voice_01').getByRole('button', { name: /Copy prompt & open Google AI Studio/ }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining('"Three tips for better sleep."')));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('Voice direction: Warm, calm, medium pace'));
+    await waitFor(() => expect(engine.openGenerator).toHaveBeenCalledWith('aistudio'));
+    await waitFor(() => expect(notice).toHaveBeenCalledWith(expect.stringContaining('make the voice line')));
+  });
+
+  it('plays a linked voice line for review and asks the person to check the words', async () => {
+    const audio = { ...asset('asset_v', 'audio', 'voice_01.wav'), role: 'voice' } as EngineAsset;
+    renderPanel(voiceList({ links: { voice_01: 'asset_v' } }), [audio]);
+    expect(await card('voice_01').findByLabelText('Listen to voice_01.wav')).toBeInTheDocument();
+    expect(card('voice_01').getByText(/check it says exactly the words above/)).toBeInTheDocument();
+  });
+});
+
+describe('review notes', () => {
+  it('sends the typed note with the approval and shows it on the approved card', async () => {
+    const list = checklist({ links: { broll_01_storyboard: 'asset_s' } });
+    engine.approveChecklistRequest.mockResolvedValue(list);
+    renderPanel(list, [asset('asset_s', 'image', 'grid.png')]);
+    fireEvent.change(card('broll_01_storyboard').getByLabelText('Review note for broll_01_storyboard'), { target: { value: '  Frames 1-3 only  ' } });
+    fireEvent.click(card('broll_01_storyboard').getByRole('button', { name: 'Approve storyboard' }));
+    await waitFor(() => expect(engine.approveChecklistRequest).toHaveBeenCalledWith('project_a', 'broll_01_storyboard', 1, 'Frames 1-3 only'));
+  });
+
+  it('approves without a note when none is typed, and shows a saved note', async () => {
+    const approved = checklist({
+      links: { broll_01_storyboard: 'asset_s' }, approved: ['broll_01_storyboard'],
+      review_notes: { broll_01_storyboard: { asset_id: 'asset_s', text: 'Frames 1-3 only' } },
+    });
+    renderPanel(approved, [asset('asset_s', 'image', 'grid.png')]);
+    expect(card('broll_01_storyboard').getByLabelText('Your note on broll_01_storyboard')).toHaveTextContent('Your note: Frames 1-3 only');
+  });
+
+  it("skipping one request keeps the other requests' notes and accepted issues", async () => {
+    // The video is in review (linked, not yet approved); the storyboard is approved with a note.
+    const list = checklist({
+      links: { broll_01_storyboard: 'asset_s', broll_01: 'asset_v' }, approved: ['broll_01_storyboard'],
+      accepted: { broll_01_storyboard: { asset_id: 'asset_s', note: 'slight blur' }, broll_01: { asset_id: 'asset_v', note: 'short' } },
+      review_notes: { broll_01_storyboard: { asset_id: 'asset_s', text: 'keep' } },
+    });
+    engine.saveChecklist.mockResolvedValue(list);
+    renderPanel(list, [asset('asset_s', 'image', 'grid.png'), asset('asset_v', 'video', 'shot.mp4')]);
+    fireEvent.click(card('broll_01').getByRole('button', { name: /^Skip$/ }));
+    await waitFor(() => expect(engine.saveChecklist).toHaveBeenCalledWith('project_a', expect.objectContaining({
+      links: { broll_01_storyboard: 'asset_s', broll_01: 'dropped' },
+      approved: ['broll_01_storyboard'],
+      accepted: { broll_01_storyboard: { asset_id: 'asset_s', note: 'slight blur' } },
+      review_notes: { broll_01_storyboard: { asset_id: 'asset_s', text: 'keep' } },
+    }), 1));
+  });
+});

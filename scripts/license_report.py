@@ -1,6 +1,6 @@
 """Generate the third-party licence report for what a Windows build would redistribute (roadmap Phase 5).
 
-Walks the *installed* runtime dependency tree of ``ageneditor`` (with the ``transcribe`` extra), reads
+Walks the *installed* runtime dependency tree of ``ageneditor`` (with ``transcribe`` and ``ai`` extras), reads
 each distribution's licence metadata and lists native libraries it ships, inspects the FFmpeg build that
 the sidecar packaging copies, and reads npm licences from ``package-lock.json``.
 
@@ -8,7 +8,8 @@ Anything that needs a human decision (copyleft, proprietary runtime DLLs, unknow
 REVIEW. Decisions are recorded in ``docs/license-decisions.json``; ``--check`` fails while any REVIEW item
 has no decision. This script reports facts; it is not legal advice.
 
-    uv run python scripts/license_report.py --out docs/LICENSE_REPORT.md [--check]
+    uv run --extra transcribe --extra ai python scripts/license_report.py \
+        --out docs/LICENSE_REPORT.md [--check]
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ def _licence(dist: metadata.Distribution) -> str:
     return text[0][:120] if text else "UNKNOWN"
 
 
-def runtime_distributions(root: str = "ageneditor", extras: tuple[str, ...] = ("transcribe",)) -> list:
+def runtime_distributions(root: str = "ageneditor", extras: tuple[str, ...] = ("transcribe", "ai")) -> list:
     seen: dict[str, metadata.Distribution] = {}
     queue = [(root, extras)]
     while queue:

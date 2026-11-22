@@ -11,6 +11,7 @@ Installed but excluded from the packaged engine (not redistributed): `av` (PyAV 
 | Component | Version | Licence | Native libs | Review | Decision |
 |---|---|---|---|---|---|
 | annotated-types | 0.8.0 | MIT | 0 | — | — |
+| anthropic | 1.17.0 | MIT License | 0 | — | — |
 | anyio | 4.16.0 | MIT | 0 | — | — |
 | attrs | 26.1.0 | MIT | 0 | — | — |
 | cffi | 2.1.1 | MIT-0 | 0 | — | — |
@@ -18,6 +19,7 @@ Installed but excluded from the packaged engine (not redistributed): `av` (PyAV 
 | colorama | 0.4.6 | BSD License | 0 | — | — |
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | 0 | — | — |
 | ctranslate2 | 4.8.5 | MIT | 3 | ships libiomp5md.dll: Intel OpenMP runtime (Intel EULA for Developer Tools; redistributable with notices) | Accepted 2026-11-12 (decision delegated by the owner): ctranslate2 itself is MIT. NVIDIA cuDNN is stripped from the installer (CPU-only build). The remaining libiomp5md.dll (Intel OpenMP runtime, required for CPU transcription) is redistributed unmodified in object form as part of the application under the Intel End User License Agreement for Developer Tools (Aug 2024), section 2.1 (Redistributables); Intel's licence text ships in the installer notices. Whether this exact DLL is on Intel's redist list was not verifiable from the wheel; confirm in the human redistribution review. |
+| docstring_parser | 0.18.0 | MIT License | 0 | — | — |
 | faster-whisper | 1.2.1 | MIT License | 0 | — | — |
 | filelock | 4.2.10 | MIT | 0 | — | — |
 | flatbuffers | 25.12.19 | Apache Software License | 0 | — | — |
@@ -28,6 +30,7 @@ Installed but excluded from the packaged engine (not redistributed): `av` (PyAV 
 | httpx2 | 2.16.0 | BSD-3-Clause | 0 | — | — |
 | huggingface_hub | 2.4.0 | Apache Software License | 0 | — | — |
 | idna | 3.20 | BSD-3-Clause | 0 | — | — |
+| jiter | 0.19.0 | MIT | 0 | — | — |
 | jsonschema | 4.26.0 | MIT | 0 | — | — |
 | jsonschema-specifications | 2025.9.1 | MIT | 0 | — | — |
 | mcp | 2.3.0 | MIT License | 0 | — | — |
@@ -46,6 +49,7 @@ Installed but excluded from the packaged engine (not redistributed): `av` (PyAV 
 | PyYAML | 6.0.3 | MIT License | 0 | — | — |
 | referencing | 0.37.0 | MIT | 0 | — | — |
 | rpds-py | 2026.9.1 | MIT | 0 | — | — |
+| sniffio | 1.3.1 | MIT License / Apache Software License | 0 | — | — |
 | sse-starlette | 3.7.0 | BSD-3-Clause | 0 | — | — |
 | starlette | 1.10.0 | BSD-3-Clause | 0 | — | — |
 | tokenizers | 0.23.3 | Apache Software License | 0 | — | — |

@@ -38,9 +38,25 @@ class JobManager:
         self._cancel: dict[str, threading.Event] = {}
         self.store.recover_interrupted_jobs()
 
-    def start_render(self, revision: int, final: bool = True) -> Job:
-        self.store.require_asset_requests_ready()
-        timeline = self.store.timeline(revision)
+    def start_render(self, revision: int, final: bool = True, variant_id: str | None = None) -> Job:
+        """Render main revision ``revision``, or a variant computed against it."""
+        variant_revision = None
+        if variant_id is None:
+            self.store.require_asset_requests_ready()
+            timeline = self.store.timeline(revision)
+        else:
+            from ageneditor.variants import VariantService
+
+            view = VariantService(self.store).view(variant_id, main_revision=revision)
+            errors = [issue.message for issue in view.issues if issue.severity == "error"]
+            if view.timeline is None or errors:
+                raise EngineException(
+                    ErrorCode.INVALID_TIMELINE,
+                    f"variant does not fit main revision {revision}: " + "; ".join(errors[:5]),
+                )
+            self.store.require_asset_requests_ready(variant_id)
+            timeline = view.timeline
+            variant_revision = view.variant.revision
         if not final:
             timeline = timeline.model_copy(
                 update={"render_profile": preview_profile(timeline.render_profile)}
@@ -54,6 +70,8 @@ class JobManager:
             kind=kind,
             timeline_revision=revision,
             output_path=output_path,
+            variant_id=variant_id,
+            variant_revision=variant_revision,
         )
         event = threading.Event()
         self._cancel[job.id] = event

@@ -81,8 +81,16 @@ leaves the unbuilt steps marked as such. Nothing below changes the product rules
   part of the project checklist (`accepted`), cleared when the link is reset or dropped, and does not weaken the
   execute gate. Desktop-only on purpose: no MCP tool, so an agent cannot accept an issue for the user.
   *(2026-11-14. Covered by engine and mocked component tests; not tried in the packaged app.)*
-- [ ] **Voice-line requests.** `audio` request kind and generated-audio import. Needs a new asset role for voice
-  (A1 accepts only the primary speaker today, audio is music-only), render mixing and ducking rules, and a schema bump.
+- [x] **Voice-line requests.** `audio` request kind with the exact words in `line` (the prompt is the voice
+  direction); a new `voice` asset role for audio-only voice-over files; track A4 for voice lines (no overlaps).
+  The renderer mixes A4 into the speech bus, so music ducks under voice lines as it does under dialogue. The
+  B-roll card copies the words plus direction and opens Google AI Studio (Gemini speech generation); a dropped
+  file is imported as `voice`, labelled `generated-external`, and links only to an audio request. QA lists it
+  as AI-generated and adds an editorial `voice_over_speaker` warning when a line plays over speaker audio that
+  was not turned down. Schema change is additive (no version bump). *(2026-11-21. Covered by engine tests with
+  real FFmpeg renders and by mocked component tests; not tried in the packaged app. Nothing checks that the
+  generated speech says the requested words: the person is asked to listen before approving. Voice lines are
+  not transcribed, so they get no captions yet.)*
 - [x] **Brief import.** The client brief, script, reference note and a requirement checklist are stored in the
   project (versioned, optimistic lock) and written only by a person in the desktop app. MCP hosts read them with
   the read-only `get_brief` tool, and the handoff message tells agents not to mark requirements met. Final QA adds
@@ -90,12 +98,48 @@ leaves the unbuilt steps marked as such. Nothing below changes the product rules
   or waived; it says plainly that nothing checked the video. *(2026-11-14. Not done: importing the reference
   *video* as media (it is a text note), and any machine check of a plan or render against the brief. Covered by
   engine tests including a real render, and mocked component tests; not tried in the packaged app.)*
-- [ ] **Asset review against the brief.** Per-request review notes before a file counts as ready.
-- [ ] **Variant matrix.** Variants (hook, language, localized shots) as first-class timelines sharing a body;
-  each further variant returns to the missing-assets check.
-- [ ] **Preview QA.** Frame-grid, subtitle-sync and crop checks on the fast preview, before the final render.
-- [ ] **Delivery.** Client file names and a known-issues note generated from the log.
-- [ ] **Syllable-timing fallback** for languages with no word aligner.
+- [x] **Asset review against the brief.** When approving a file the person can write a review note
+  (`review_notes` on the checklist: request → asset ID and text). The note belongs to the exact approved file and
+  is cleared when the file is reset, replaced or skipped; a re-plan keeps it only while the request keeps the same
+  approved file. Agents read notes through `get_asset_checklist` and cannot write them; the Execute and Review
+  stage prompts tell Claude to follow and check them. Skipping one card no longer clears other cards' accepted
+  issues. *(2026-11-21. Engine tests (store, desktop bridge) and mocked component tests; not tried in the packaged
+  app. The note is optional and free text: nothing checks the file, or the edit, against it.)*
+- [x] **Variant matrix.** Variants (hook, language, localized shots) are stored as overrides on the shared main
+  edit and computed from its current revision (spec §3.5): a replacement hook, overlay asset swaps, hook overlays,
+  captions kept or off. Versioned, refused when they do not fit the main edit. Asset requests with `variant_id`
+  gate only their variant. Variant renders pin both revisions and pass the same technical QA. MCP: `list_variants`,
+  `create_variant`, `update_variant`, `get_variant`, `start_render(variant_id)`; desktop: read-only Variants panel.
+  *(2026-11-21. Engine tests include a real render and QA of a variant whose hook changes the length; MCP round
+  trip and mocked component tests. Not tried with a live agent or in the packaged app. No translated captions and
+  variants cannot be deleted. Variant finals are delivered with the main edit by Save delivery… (see Delivery).)*
+- [x] **Preview QA.** `run_preview_qa` measures a finished render (normally the preview) before the final render:
+  format against its timeline, a frame grid (`frame_grid.png`, the middle frame of each clip, 6-12 frames) with flat
+  black or single-colour frames flagged (`signalstats`), black bars where a clip should fill the frame
+  (`cropdetect`; skipped where a clip uses `contain`), and captions shown while the render is silent
+  (`silencedetect`). Warnings only, never a gate. Stored per job (`PreviewQAReport`); works for variant renders.
+  The desktop app shows a Preview check under the preview with the frame grid; Execute and Review are told to run it.
+  *(2026-11-21. Engine tests on real renders, including a crafted letterboxed/black/silent source; mocked component
+  tests. Thresholds are first guesses not tuned on real footage. Caption sync measures sound, not words: music
+  under a caption counts as sound, and early or late captions over continuous speech are not detected.)*
+- [x] **Delivery.** Client file names and a known-issues note generated from the log. Save delivery… checks every
+  final (main and variants) and saves those that pass into a new folder: `<Client>_<Project>_<Main|Variant>_<ratio>_
+  <seconds>_r<rev>[v<variant rev>].mp4` (+ `.srt`) and `known_issues.md`, built by the engine (`delivery_plan`) from
+  accepted known issues, QA checks that did not pass, the matching preview check and the AI-generated (external)
+  labels. Renders without a QA report or with a failed one are left out and reported in the app, not in the
+  client's note; files that fail to copy are listed under "Not saved". The client name is remembered per project.
+  *(2026-11-22. Engine tests on real renders (main + variant, accepted issue on a generated shot); Rust tests for the
+  folder naming and note; mocked component tests. The native folder picker and copy have not been tried in the
+  packaged app. The note is in English only.)*
+- [x] **Syllable-timing fallback** for languages with no word aligner. Before, a segment whose words came back
+  without usable times was dropped from the transcript, and so were single untimed words. Now a run of untimed
+  words is spread over the gap between its timed neighbours by estimated syllables, and a segment with no usable
+  times has its words (or its text, split into characters or grapheme clusters for scripts without spaces) spread
+  over the segment (`word_timing.py`). Such words are marked `timing: "estimated"` (aligned words keep the old wire
+  format). Plan validation warns when a cut boundary is on an estimated word; QA adds an editorial
+  `estimated_caption_timing` warning. *(2026-11-21. Tested with a fake recognizer, the real store and planner; not
+  with a real non-Latin recording. Syllable counts are rough: vowel groups for Latin, Cyrillic and Greek, one per
+  character for CJK, Hangul, Thai and similar.)*
 
 ## Phase 3 — Captions, B-roll, audio, revisions (P0)
 
@@ -149,13 +193,54 @@ Tasks:
 ## Phase 6 — After MVP (P2)
 
 Candidate features after usage evidence:
-- [ ] MLT or native preview engine for interactive multitrack timeline playback.
-- [ ] OpenTimelineIO import/export, subject to adapter verification.
-- [ ] Face-aware reframing using MediaPipe/other local vision models.
-- [ ] More subtitle templates, audio repair and color matching.
-- [ ] Packaged macOS and Linux builds and platform-specific hardware inference.
-- [ ] Optional native AI chat and user-controlled model providers.
-- [ ] Advanced project management, batch exports and editor presets.
+- [~] MLT or native preview engine for interactive multitrack timeline playback. *(2026-11-21: a read-only
+  multitrack timeline view (V1, V2, A1-A4, captions, drawn to scale from the current revision) under the preview;
+  its playhead follows the rendered preview and clicking seeks it, only when the preview is of the shown revision.
+  This is navigation over the render, not live multitrack playback: no MLT or native compositor was added, and
+  changes still need a render to be seen.)*
+- [~] OpenTimelineIO import/export, subject to adapter verification. *(2026-11-21: `otio.py` writes OTIO JSON
+  (Timeline.1/Stack.1/Track.1/Clip.2/Gap.1/Transition.1) at the timeline frame rate with AgenEditor details in
+  metadata, and imports OTIO whose media matches registered assets (by metadata, hash, path or unique file name) as a
+  validated candidate. Desktop: Export .otio… and Import .otio… (a new revision; refused with the reasons when media
+  is not registered). MCP: `export_otio`. Tests check structure, timing and the round trip; on 2026-11-22,
+  the reference `opentimelineio` 0.18.1 library parsed an export and AgenEditor imported a timeline authored by
+  that library. Premiere Pro/DaVinci Resolve adapter verification is still open.)*
+- [~] Face-aware reframing using MediaPipe/other local vision models. *(2026-11-21: `suggest_reframe` (MCP) gives
+  crop-centre suggestions for primary clips whose crop cuts the picture, from FFmpeg edge and motion energy on a
+  64x36 thumbnail with a confidence score; the agent applies confident ones as `set_transform`. Tested on synthetic
+  moving shapes and a noise frame. This is a detail/motion heuristic, not face detection: a local face model
+  (MediaPipe or OpenCV) needs a new dependency that has not been added.)*
+- [x] More subtitle templates, audio repair and color matching. *(2026-11-21: caption templates `top_clean`,
+  `big_center` (bold, centred, heavier outline) and `lower_minimal`; `AudioMix.speech_repair` none/light/strong with
+  fixed high-pass, FFT denoise and de-esser chains on the speech bus; `Timeline.broll_color_match` measures each
+  B-roll clip and the primary footage under it with `signalstats` and moves the B-roll halfway toward it with a bounded
+  `lutyuv` (luma gain 0.8-1.25, chroma shift ±12). Tested on real renders of synthetic sources; not tuned on real
+  footage or checked by ear/eye by a person.)*
+- [~] Packaged macOS and Linux builds and platform-specific hardware inference. *(2026-11-21: the desktop shell no
+  longer hard-codes Windows paths (`.venv/bin`, executable suffixes, `open`/`xdg-open` for generator sites, Claude Code
+  in `~/.local/bin`), the bundled-FFmpeg lookup uses the platform suffix, and an informational CI job runs the engine
+  tests and compiles the shell on Ubuntu and macOS. Not done: no macOS or Linux package, installer or pinned FFmpeg
+  build; saved chat keys are Windows-only; the CI job has not run yet; no platform-specific hardware inference.)*
+- [~] Optional native AI chat and user-controlled model providers. *(2026-11-21, per docs/BUILT_IN_CHAT_PLAN.md:
+  a "Your API key" mode beside Claude Code. Keys are stored in Windows Credential Manager and never returned to the
+  page; the person allows chat per project after seeing what text is sent. Providers: Claude through the official
+  `anthropic` SDK (default `claude-opus-5-5`, effort set, server-side refusal fallback), OpenAI Responses API and
+  Gemini `generateContent` over HTTPS. The model gets bounded text evidence (instructions, file metadata without
+  paths, up to 1,500 transcript words with IDs and times, the current cut) and may return an EditPlan; the engine
+  validates it with `submit_edit_plan` (one retry with the reasons), stores a proposal pinned to the revision, and
+  only "Apply" commits it as one user-authored revision; a proposal goes stale if the edit changed. Tested with
+  recorded provider responses, a fake SDK client and an in-memory credential store. Not done: no live call to any
+  provider has been made. On 2026-11-22 the desktop sidecar build was changed to include the `ai` extra, and its
+  local executable was built and inspected for the `anthropic` SDK. A request and reply passed through the real SDK
+  using a local mock HTTP transport; the full installer and UI were not exercised.
+  The Windows credential code has not run against the real Credential Manager in tests, no streaming, and revision
+  patches (as opposed to whole cut plans) are not offered in chat.)*
+- [x] Advanced project management, batch exports and editor presets. *(2026-11-21: projects can be renamed and
+  archived/unarchived (display only; nothing deleted). Workspace editor presets hold caption template, colour, B-roll
+  colour match and audio mix; a person saves one from a project's current edit and picks one per project, and the
+  agent applies the pick with `apply_editor_preset` (one revision patch). Saving finals together is now Delivery (Phase 2c):
+  technical QA on the main final and each variant's latest final, then a new folder with client names and a note. Engine, Rust and mocked UI tests; the native folder picker and copy are not tried in the
+  packaged app.)*
 
 ## Workstream dependencies
 

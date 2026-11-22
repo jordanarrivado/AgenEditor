@@ -18,7 +18,8 @@ def find_tool(name: str) -> Path:
             return p
         raise EngineException(ErrorCode.PROBE_FAILED, f"AGENEDITOR_{name.upper()} points to a missing file")
     if getattr(sys, "frozen", False):
-        bundled = Path(sys.executable).parent / "binaries" / f"{name}.exe"
+        suffix = ".exe" if os.name == "nt" else ""
+        bundled = Path(sys.executable).parent / "binaries" / f"{name}{suffix}"
         if bundled.is_file():
             return bundled
         raise EngineException(ErrorCode.PROBE_FAILED, f"bundled {name} is missing")

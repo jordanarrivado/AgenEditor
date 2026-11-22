@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight, Check, ChevronDown, Download, Eye, Factory, Film, Folder, House, Layers, Loader2, Lock, Mic, Music2, PenLine, Play, Plus,
+  ArrowRight, Check, ChevronDown, Download, Eye, Factory, Film, Folder, FolderDown, House, Layers, Loader2, Lock, Mic, Music2, PenLine, Play, Plus,
   ShieldCheck, Sparkles, Square, Upload, Wand2, Wrench, X,
 } from 'lucide-react';
 import {
@@ -12,6 +12,8 @@ import {
   type EngineBrief,
   type EngineConnection,
   type EngineJob,
+  type EngineVariantSummary,
+  type EngineTimeline,
   type EngineProject,
   type EngineQA,
   type ImportBucket,
@@ -24,6 +26,11 @@ import { engineErrorText } from '../../utils/engineError';
 import { isStoryboard, mergePlanRequests, reviewProgress, reviewState } from '../../utils/assetChecklist';
 import { parseAssetRequests, type AssetRequest } from '../../utils/assetRequests';
 import { BrollPanel, toolFor } from './BrollPanel';
+import { VariantsPanel } from './VariantsPanel';
+import { PreviewCheckPanel } from './PreviewCheckPanel';
+import { EditorPresetsPanel } from './EditorPresetsPanel';
+import { ChatPanel } from './ChatPanel';
+import { TimelineView } from './TimelineView';
 import { HomeView } from './HomeView';
 import { SetupPanel } from './SetupPanel';
 import { UsageBadge } from './UsageBadge';
@@ -61,9 +68,10 @@ const BUCKETS: { id: ImportBucket; title: string; hint: string; icon: React.Reac
   { id: 'main', title: 'Main footage', hint: 'The video you want edited. Add several at once.', icon: <Film className="h-5 w-5" />, roles: ['primary'] },
   { id: 'reference', title: 'References', hint: 'Style or pacing examples. Never cut into your video.', icon: <Eye className="h-5 w-5" />, roles: ['reference'] },
   { id: 'asset', title: 'Assets', hint: 'B-roll, images, logos and music Claude may use.', icon: <Layers className="h-5 w-5" />, roles: ['broll', 'logo', 'music', 'sfx'] },
+  { id: 'voice', title: 'Voice-over', hint: 'Narration recorded or made for this edit. Audio only; placed on its own track.', icon: <Mic className="h-5 w-5" />, roles: ['voice'] },
 ];
 const ROLE_LABELS: Record<EngineAsset['role'], string> = {
-  primary: 'Main footage', broll: 'B-roll', music: 'Music', logo: 'Logo', subtitles: 'Subtitles', reference: 'Reference', sfx: 'Sound effect',
+  primary: 'Main footage', broll: 'B-roll', music: 'Music', logo: 'Logo', subtitles: 'Subtitles', reference: 'Reference', sfx: 'Sound effect', voice: 'Voice line',
 };
 
 const SUGGESTIONS = [
@@ -100,6 +108,9 @@ export const SimpleWorkspace: React.FC = () => {
   currentProjectId.current = projectId;
   const [assets, setAssets] = useState<EngineAsset[]>([]);
   const [revision, setRevision] = useState(0);
+  const [timelineData, setTimelineData] = useState<EngineTimeline | null>(null);
+  const previewVideo = useRef<HTMLVideoElement>(null);
+  const [previewTime, setPreviewTime] = useState(0);
   const [brief, setBrief] = useState<EngineBrief | null>(null);
   const [instructions, setInstructions] = useState('');
   const [jobs, setJobs] = useState<EngineJob[]>([]);
@@ -127,6 +138,9 @@ export const SimpleWorkspace: React.FC = () => {
   const [removing, setRemoving] = useState<string | null>(null);
   // B-roll requests from the plan (made in ChatGPT / Google Flow) and the one being attached now.
   const [checklist, setChecklist] = useState<EngineAssetChecklist | null>(null);
+  const [variants, setVariants] = useState<EngineVariantSummary[]>([]);
+  /** Claude Code (subscription, the default) or the built-in chat with the person's own API key. */
+  const [assistant, setAssistant] = useState<'claude_code' | 'api'>('claude_code');
   const [attaching, setAttaching] = useState<string | null>(null);
   const [polishing, setPolishing] = useState(false);
   const [polished, setPolished] = useState<{ from: string; text: string } | null>(null);
@@ -149,16 +163,19 @@ export const SimpleWorkspace: React.FC = () => {
   }, []);
 
   const refreshProject = useCallback(async (id: string) => {
-    const [summary, timeline, storedBrief, projectJobs, storedChecklist] = await Promise.all([
+    const [summary, timeline, storedBrief, projectJobs, storedChecklist, projectVariants] = await Promise.all([
       engine.summary(id), engine.timeline(id), engine.getBrief(id), engine.listJobs(id), engine.getChecklist(id),
+      engine.listVariants(id).catch(() => [] as EngineVariantSummary[]),
     ]);
     if (id !== currentProjectId.current) return;
     setAssets(summary.assets);
     setRevision(timeline.revision);
+    setTimelineData(Array.isArray(timeline.clips) ? timeline : null);
     setBrief(storedBrief);
     setInstructions(storedBrief.brief_text);
     setJobs(projectJobs);
     setChecklist(storedChecklist);
+    setVariants(projectVariants);
   }, []);
 
   useEffect(() => {
@@ -171,6 +188,7 @@ export const SimpleWorkspace: React.FC = () => {
     setAssets([]);
     setBrief(null);
     setChecklist(null);
+    setVariants([]);
     setJobs([]);
     setPreviewUrl(null);
     shownPreview.current = null;
@@ -190,8 +208,9 @@ export const SimpleWorkspace: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [projectId]);
 
-  const latestPreview = jobs.find((job) => job.kind === 'preview_render' && job.status === 'succeeded');
-  const latestFinal = jobs.find((job) => job.kind === 'final_render' && job.status === 'succeeded');
+  // Variant renders have their own panel; the main preview, QA and export use the main edit only.
+  const latestPreview = jobs.find((job) => !job.variant_id && job.kind === 'preview_render' && job.status === 'succeeded');
+  const latestFinal = jobs.find((job) => !job.variant_id && job.kind === 'final_render' && job.status === 'succeeded');
   const activeJobs = jobs.filter((job) => job.status === 'queued' || job.status === 'running');
 
   // Show the newest finished preview as soon as the engine reports it.
@@ -314,11 +333,12 @@ export const SimpleWorkspace: React.FC = () => {
     setNotice(null);
     let imported: EngineAsset | null = null;
     try {
-      const role = isStoryboard(request.id) ? 'reference' : 'broll';
+      const role = isStoryboard(request.id) ? 'reference' : request.kind === 'audio' ? 'voice' : 'broll';
       imported = await (dropped ? engine.importDroppedMedia(id, role, toolFor(request)) : engine.importMedia(id, role, toolFor(request)));
       if (!imported) return; // picker cancelled
       if (imported.kind !== request.kind) {
-        throw new Error(`${imported.original_filename} is a ${imported.kind === 'audio' ? 'sound file' : imported.kind}, but this item needs ${request.kind === 'image' ? 'an image' : 'a video'}.`);
+        const needs = { image: 'an image', video: 'a video', audio: 'a sound file' }[request.kind];
+        throw new Error(`${imported.original_filename} is a ${imported.kind === 'audio' ? 'sound file' : imported.kind}, but this item needs ${needs}.`);
       }
       let list = await engine.getChecklist(id);
       const previous = list.links[request.id];
@@ -462,6 +482,91 @@ export const SimpleWorkspace: React.FC = () => {
     setNotice(`Final render of revision ${job.timeline_revision} started.`);
   });
 
+  /** The main final plus each variant's latest final, checked like single exports, saved into one folder. */
+  /** Client name for the delivery form; null while the form is closed. */
+  const [deliveryClient, setDeliveryClient] = useState<string | null>(null);
+  const finalJobs: { job: EngineJob; label: string }[] = [
+    ...(latestFinal ? [{ job: latestFinal, label: 'Main edit' }] : []),
+    ...variants.flatMap((item) => {
+      const job = jobs.find((entry) => entry.variant_id === item.variant.id && entry.kind === 'final_render' && entry.status === 'succeeded');
+      return job ? [{ job, label: item.variant.name }] : [];
+    }),
+  ];
+
+  const openDelivery = () => run(async () => {
+    if (!projectId) return;
+    const settings = await engine.projectSettings(projectId);
+    setDeliveryClient(settings.client_name ?? '');
+  });
+
+  /** Checks every final, then saves those that pass as a delivery: client file names and a known-issues note. */
+  const saveDelivery = () => run(async () => {
+    if (!projectId || deliveryClient === null) return;
+    if (finalJobs.length === 0) throw new Error('There is no finished final render to save yet.');
+    const passed: string[] = [];
+    const failed: string[] = [];
+    for (const candidate of finalJobs) {
+      const report = await engine.runQA(projectId, candidate.job.id);
+      if (candidate.job.id === latestFinal?.id) setQA({ jobId: candidate.job.id, report });
+      if (report.overall === 'fail') failed.push(candidate.label); else passed.push(candidate.job.id);
+    }
+    if (passed.length === 0) throw new Error(`Technical check failed for every final (${failed.join(', ')}), so nothing was saved.`);
+    const result = await engine.saveDelivery(projectId, passed, deliveryClient.trim());
+    if (!result) return; // folder picker cancelled
+    setDeliveryClient(null);
+    const saved = result.files.filter((file) => file.saved).length;
+    const errors = result.files.filter((file) => file.error).map((file) => `${file.name}: ${file.error}`);
+    setNotice([
+      `Saved ${saved} of ${finalJobs.length} finals with a known-issues note in ${result.folder}.`,
+      failed.length ? `Not saved (technical check failed): ${failed.join(', ')}.` : '',
+      result.excluded.length ? `Left out: ${result.excluded.map((item) => item.reason).join('; ')}.` : '',
+      errors.length ? `Errors: ${errors.join('; ')}` : '',
+    ].filter(Boolean).join(' '));
+  });
+
+  const exportTimeline = () => run(async () => {
+    if (!projectId) return;
+    const path = await engine.exportOtio(projectId);
+    if (path) setNotice(`Saved the timeline (revision ${revision}) to ${path}. Captions are not in .otio; save them as SRT.`);
+  });
+
+  const [confirmImport, setConfirmImport] = useState(false);
+  /** Replaces the cut with an .otio file's timeline as a new revision; earlier revisions stay. */
+  const importTimeline = () => {
+    if (!confirmImport) { setConfirmImport(true); return; }
+    setConfirmImport(false);
+    run(async () => {
+      if (!projectId) return;
+      const result = await engine.importOtio(projectId, revision);
+      if (!result) return;
+      const warnings = result.issues.filter((issue) => issue.severity === 'warning').map((issue) => issue.message);
+      if (result.committed_revision === null) {
+        const errors = result.issues.filter((issue) => issue.severity === 'error').map((issue) => issue.message);
+        throw new Error(`The timeline was not imported: ${errors.slice(0, 3).join('; ')}`);
+      }
+      await refreshProject(projectId);
+      setNotice(`Imported ${result.clip_count} clips as revision ${result.committed_revision}.${warnings.length ? ` ${warnings.slice(0, 3).join(' ')}` : ''}`);
+    });
+  };
+
+  const renameProject = async (id: string, name: string) => {
+    try {
+      await engine.renameProject(id, name);
+      await refreshLibrary();
+    } catch (error) {
+      setNotice(errorText(error));
+    }
+  };
+
+  const archiveProject = async (id: string, archived: boolean) => {
+    try {
+      await engine.setProjectArchived(id, archived);
+      await refreshLibrary();
+    } catch (error) {
+      setNotice(errorText(error));
+    }
+  };
+
   const checkAndSave = () => run(async () => {
     if (!projectId || !latestFinal) return;
     const report = qa?.jobId === latestFinal.id ? qa.report : await engine.runQA(projectId, latestFinal.id);
@@ -558,6 +663,8 @@ export const SimpleWorkspace: React.FC = () => {
           onCreate={createProject}
           onOpen={openProject}
           setup={<SetupPanel engineConnected={Boolean(connection?.connected)} onChanged={refreshConnection} />}
+          onRename={renameProject}
+          onArchive={archiveProject}
         />
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-[18.5rem_minmax(0,1fr)_21rem] xl:grid-cols-[21rem_minmax(0,1fr)_24rem]">
@@ -629,6 +736,8 @@ export const SimpleWorkspace: React.FC = () => {
 
             <SoundLibraryPanel disabled={running} onNotice={setNotice} onActiveCount={onSoundsOn} />
 
+            {projectId && <EditorPresetsPanel projectId={projectId} revision={revision} disabled={running} onNotice={setNotice} />}
+
             <section className="space-y-2.5">
               <div className="flex items-baseline justify-between gap-3">
                 <label htmlFor="instructions" className="text-xs font-semibold uppercase tracking-[0.08em] text-fg-2">Instructions</label>
@@ -665,12 +774,37 @@ export const SimpleWorkspace: React.FC = () => {
               <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                 {revision === 0 && <span className="text-xs text-fg-3">Exports unlock after the first edit</span>}
                 <Button size="lg" icon={<ShieldCheck className="h-4 w-4" />} disabled={busy || !latestFinal} onClick={checkAndSave}>Check &amp; save MP4…</Button>
+                {finalJobs.length > 0 && (
+                  <Button size="lg" icon={<FolderDown className="h-4 w-4" />} disabled={busy || running} onClick={openDelivery}
+                    title="Every final that passes its technical check, under client file names, with a known-issues note">Save delivery…</Button>
+                )}
+                <Button size="lg" variant="ghost" disabled={busy || revision === 0} onClick={exportTimeline}
+                  title="For finishing in another editor. Interchange is not verified.">Export .otio…</Button>
+                <Button size="lg" variant={confirmImport ? 'danger' : 'ghost'} disabled={busy || running} onClick={importTimeline} onBlur={() => setConfirmImport(false)}
+                  title="Media must already be in this project. The current cut is kept as an earlier revision.">
+                  {confirmImport ? 'Replace the cut? Click again' : 'Import .otio…'}
+                </Button>
                 <Button variant="primary" size="lg" icon={<Download className="h-4 w-4" />} disabled={busy || running || revision === 0} onClick={renderFinal}>Render final MP4</Button>
               </div>
             </div>
 
+            {deliveryClient !== null && (
+              <form aria-label="Save delivery" className="flex flex-wrap items-end gap-2 rounded-2xl border border-line bg-surface p-3 text-sm"
+                onSubmit={(event) => { event.preventDefault(); saveDelivery(); }}>
+                <label className="flex min-w-48 flex-1 flex-col gap-1">
+                  <span className="text-xs text-fg-3">Client name (optional, used in file names)</span>
+                  <input className="rounded-lg border border-line bg-app px-2 py-1.5" maxLength={60} value={deliveryClient}
+                    onChange={(event) => setDeliveryClient(event.target.value)} />
+                </label>
+                <p className="w-full text-xs text-fg-3 sm:order-last">
+                  {finalJobs.map((item) => item.label).join(', ')} · each is checked first. A new folder gets the files and known_issues.md, built from accepted issues, checks and AI-generated labels.
+                </p>
+                <Button type="submit" variant="primary" size="md" disabled={busy}>Choose folder…</Button>
+                <Button type="button" size="md" onClick={() => setDeliveryClient(null)}>Cancel</Button>
+              </form>
+            )}
             <div className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-2xl border border-line bg-black">
-              {previewUrl ? <video key={previewUrl} className="h-full w-full" controls src={previewUrl} /> : (
+              {previewUrl ? <video key={previewUrl} ref={previewVideo} className="h-full w-full" controls src={previewUrl} onTimeUpdate={(e) => setPreviewTime(e.currentTarget.currentTime)} /> : (
                 <div className="space-y-3 px-6 text-center">
                   <span aria-hidden className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-line bg-surface text-fg-2"><Play className="ml-0.5 h-5 w-5" /></span>
                   <p className="font-semibold text-fg">Your edit will play here</p>
@@ -679,6 +813,11 @@ export const SimpleWorkspace: React.FC = () => {
               )}
             </div>
             {latestPreview && <p className="-mt-2 text-xs text-fg-3">Preview of revision {latestPreview.timeline_revision}{latestPreview.timeline_revision !== revision ? ` · newer revision ${revision} not rendered yet` : ''}</p>}
+            {timelineData && timelineData.revision > 0 && (
+              <TimelineView timeline={timelineData} assets={assets} currentTime={previewTime} previewRevision={latestPreview?.timeline_revision ?? null}
+                onSeek={(seconds) => { if (previewVideo.current) previewVideo.current.currentTime = seconds; setPreviewTime(seconds); }} />
+            )}
+            {projectId && latestPreview && <PreviewCheckPanel projectId={projectId} jobId={latestPreview.id} disabled={running} />}
 
             {qa && latestFinal && qa.jobId === latestFinal.id && (
               <div className={`${card} p-4 text-sm`}>
@@ -690,6 +829,11 @@ export const SimpleWorkspace: React.FC = () => {
             {projectId && checklist?.configured && checklist.requests.length > 0 && (
               <BrollPanel projectId={projectId} checklist={checklist} assets={assets} disabled={running} attaching={attaching}
                 onBrowse={(request) => void attachToRequest(request, false)} onChange={setChecklist} onNotice={setNotice} />
+            )}
+
+            {projectId && variants.length > 0 && (
+              <VariantsPanel projectId={projectId} variants={variants} jobs={jobs} revision={revision} disabled={running || busy}
+                onJobsChanged={() => void refreshProject(projectId).catch(() => undefined)} onNotice={setNotice} />
             )}
 
             {revision === 0 && (
@@ -722,8 +866,21 @@ export const SimpleWorkspace: React.FC = () => {
           <aside aria-label="Claude" className="flex min-h-0 flex-col border-l border-line bg-sidebar">
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-3">
               <h2 className="flex items-center gap-2 font-semibold"><Sparkles className="h-4 w-4 text-accent" /> Claude</h2>
-              <Button variant="ghost" icon={<PenLine className="h-4 w-4" />} disabled={running || output.length === 0} onClick={newConversation}>New conversation</Button>
+              {assistant === 'claude_code' && (
+                <Button variant="ghost" icon={<PenLine className="h-4 w-4" />} disabled={running || output.length === 0} onClick={newConversation}>New conversation</Button>
+              )}
             </div>
+            <div role="radiogroup" aria-label="Assistant" className="mx-4 mt-3 grid shrink-0 grid-cols-2 gap-1 rounded-lg border border-line bg-app p-0.5 text-xs">
+              {([['claude_code', 'Claude Code'], ['api', 'Your API key']] as const).map(([id, label]) => (
+                <button key={id} type="button" role="radio" aria-checked={assistant === id} disabled={running}
+                  onClick={() => setAssistant(id)}
+                  className={`rounded-md px-2 py-1.5 font-medium ${assistant === id ? 'bg-surface text-fg shadow-sm' : 'text-fg-3 hover:text-fg'}`}>{label}</button>
+              ))}
+            </div>
+
+            {assistant === 'api' && projectId ? (
+              <ChatPanel projectId={projectId} revision={revision} onApplied={() => void refreshProject(projectId).catch(() => undefined)} />
+            ) : (<>
 
             <ol data-testid="output-log" aria-label="Conversation" className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overflow-x-hidden px-4 py-4 text-sm">
               {output.length === 0 && (
@@ -773,6 +930,7 @@ export const SimpleWorkspace: React.FC = () => {
               {claudeMissing && <p className="text-xs text-warning">Claude Code isn't installed on this PC. Go to Home and use Set up this PC to install it and sign in.</p>}
               <p className="flex items-start gap-1.5 text-xs text-fg-3"><Lock aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" /> Claude edits only through AgenEditor's tools. Your prompt, filenames, file details and transcripts go to Anthropic; video files are never uploaded.</p>
             </div>
+            </>)}
           </aside>
         </div>
       )}

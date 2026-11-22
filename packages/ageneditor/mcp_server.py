@@ -31,8 +31,11 @@ from ageneditor.contracts import (
     RevisionPatch,
     ShotLabel,
     Timeline,
+    VariantKind,
+    VariantOverrides,
 )
 from ageneditor.jobs import JobManager
+from ageneditor.media.preview_qa import run_preview_qa as run_preview_qa_service
 from ageneditor.media.qa import run_qa as run_qa_service
 from ageneditor.planning import candidate_hooks
 from ageneditor.planning import submit_edit_plan as submit_edit_plan_service
@@ -41,6 +44,7 @@ from ageneditor.sound_library import SoundLibraryStore
 from ageneditor.storage import ProjectStore
 from ageneditor.transcription import TranscriptionManager
 from ageneditor.transitions import TransitionLibrary
+from ageneditor.variants import PinnedTimelineStore, VariantService
 
 
 def build_server(workspace: Path, shared_service: bool = False) -> MCPServer:
@@ -145,7 +149,11 @@ def build_server(workspace: Path, shared_service: bool = False) -> MCPServer:
 
     @server.tool()
     def get_asset_checklist(project_id: str) -> dict[str, Any]:
-        """Read project asset requests and their ready, pending or dropped links."""
+        """Read project asset requests and their ready, pending or dropped links.
+
+        ``review_notes`` holds a person's note on an approved file (for example "use only the first
+        3 seconds"); follow it when placing that file. Agents cannot write notes or approvals.
+        """
         try:
             return store_for(project_id).asset_checklist().model_dump(mode="json")
         except EngineException as exc:
@@ -277,7 +285,11 @@ def build_server(workspace: Path, shared_service: bool = False) -> MCPServer:
         limit: int = 120,
         context_words: int = 8,
     ) -> dict[str, Any]:
-        """Read a bounded transcript page with source word IDs, exact microseconds and surrounding context."""
+        """Read a bounded transcript page with source word IDs, exact microseconds and surrounding context.
+
+        Words marked ``"timing": "estimated"`` had no usable times from the recognizer; their times were
+        shared out by syllables within the segment. Prefer aligned words for cut points.
+        """
         try:
             if start_word < 0 or not 1 <= limit <= 300 or not 0 <= context_words <= 30:
                 raise EngineException(ErrorCode.INVALID_ARGUMENT, "invalid transcript page bounds")
@@ -328,12 +340,19 @@ def build_server(workspace: Path, shared_service: bool = False) -> MCPServer:
             raise ToolError(exc.error.model_dump_json()) from exc
 
     @server.tool()
-    def start_render(project_id: str, revision: int, final: bool = True) -> dict[str, Any]:
-        """Start a render pinned to an immutable timeline revision."""
+    def start_render(
+        project_id: str, revision: int, final: bool = True, variant_id: str | None = None
+    ) -> dict[str, Any]:
+        """Start a render pinned to an immutable timeline revision.
+
+        With ``variant_id``, renders that variant computed against main revision ``revision``; the job
+        records both revisions. A variant renders only when its own asset requests are ready too.
+        """
         try:
             store = store_for(project_id)
-            with store.audited("start_render", revision=revision, final=final):
-                job = manager_for(project_id).start_render(revision, final)
+            extra = {"variant_id": variant_id} if variant_id else {}
+            with store.audited("start_render", revision=revision, final=final, **extra):
+                job = manager_for(project_id).start_render(revision, final, variant_id)
             return job.model_dump(mode="json")
         except EngineException as exc:
             raise ToolError(exc.error.model_dump_json()) from exc
@@ -371,9 +390,34 @@ def build_server(workspace: Path, shared_service: bool = False) -> MCPServer:
                 job = store.get_job(job_id)
                 if job.status.value != "succeeded" or not job.output_path or job.timeline_revision is None:
                     raise EngineException(ErrorCode.QA_FAILED, "QA requires a successful render job")
+                target = store
+                if job.variant_id is not None:
+                    view = VariantService(store).view(
+                        job.variant_id, job.timeline_revision, job.variant_revision
+                    )
+                    if view.timeline is None:
+                        raise EngineException(ErrorCode.QA_FAILED, "the variant can no longer be computed")
+                    target = PinnedTimelineStore(store, view.timeline)
                 report = run_qa_service(
-                    store, job.id, job.timeline_revision, store.safe_path(job.output_path)
+                    target, job.id, job.timeline_revision, store.safe_path(job.output_path)
                 )
+            return report.model_dump(mode="json")
+        except EngineException as exc:
+            raise ToolError(exc.error.model_dump_json()) from exc
+
+    @server.tool()
+    def run_preview_qa(project_id: str, job_id: str) -> dict[str, Any]:
+        """Check a finished render (normally the preview) before making the final render.
+
+        Measured on the file: format against its timeline, a frame grid of each clip's middle frame with
+        flat (black or single-colour) frames flagged, black bars where a clip should fill the frame, and
+        captions shown while the audio is silent (possible caption drift; music counts as sound). Warnings
+        only; it never blocks a render. You cannot see the frame grid; the person can, in the app.
+        """
+        try:
+            store = store_for(project_id)
+            with store.audited("run_preview_qa", job_id=job_id):
+                report = run_preview_qa_service(store, job_id)
             return report.model_dump(mode="json")
         except EngineException as exc:
             raise ToolError(exc.error.model_dump_json()) from exc
@@ -460,6 +504,163 @@ def build_server(workspace: Path, shared_service: bool = False) -> MCPServer:
             raise ToolError(exc.error.model_dump_json()) from exc
 
     library = SoundLibraryStore(workspace)
+
+    @server.tool()
+    def suggest_reframe(project_id: str, revision: int | None = None) -> dict[str, Any]:
+        """Suggest crop centres for primary clips whose crop cuts away part of the picture.
+
+        Not face detection: it finds where the picture has the most detail and movement, which usually
+        follows a speaker on a plain background. Apply a suggestion with apply_revision (set_transform) only
+        if it fits the shot, and ask the person to check the preview. Low-confidence clips are left out.
+        """
+        try:
+            from ageneditor.reframe import METHOD
+            from ageneditor.reframe import suggest_reframe as suggest
+
+            store = store_for(project_id)
+            timeline = store.timeline(revision)
+            return {"method": METHOD, "revision": timeline.revision, "suggestions": suggest(store, timeline)}
+        except EngineException as exc:
+            raise ToolError(exc.error.model_dump_json()) from exc
+
+    @server.tool()
+    def export_otio(project_id: str, revision: int | None = None) -> dict[str, Any]:
+        """Write a revision as an OpenTimelineIO (.otio) file inside the project's exports folder.
+
+        For finishing in another editor. Media is referenced by its registered original's path; captions are
+        not included (use get_captions_srt). Interchange with other editors is not verified.
+        """
+        try:
+            from ageneditor.otio import export_otio as export_otio_service
+
+            store = store_for(project_id)
+            timeline = store.timeline(revision)
+            text = export_otio_service(store, timeline)
+            relative = f"exports/r{timeline.revision}.otio"
+            store.write_artifact(relative, text)
+            return {"path": relative, "revision": timeline.revision, "clips": len(timeline.clips)}
+        except EngineException as exc:
+            raise ToolError(exc.error.model_dump_json()) from exc
+
+    @server.tool()
+    def list_editor_presets(project_id: str | None = None) -> dict[str, Any]:
+        """List the workspace's editor presets (caption template, colour, B-roll colour match, audio mix).
+
+        With ``project_id``, ``chosen`` is the preset the person picked for that project (or null). Apply it
+        with apply_editor_preset when they did; do not apply presets they did not ask for.
+        """
+        try:
+            from ageneditor.editor_presets import EditorPresetStore
+
+            library = EditorPresetStore(workspace).load()
+            chosen = store_for(project_id).setting("editor_preset_id") if project_id else None
+            return {"presets": [p.model_dump(mode="json") for p in library.presets], "chosen": chosen}
+        except EngineException as exc:
+            raise ToolError(exc.error.model_dump_json()) from exc
+
+    @server.tool()
+    def apply_editor_preset(project_id: str, preset_id: str, expected_revision: int) -> dict[str, Any]:
+        """Apply an editor preset's finishing settings as a new revision (captions, colour, audio only)."""
+        try:
+            from ageneditor.editor_presets import EditorPresetStore, apply_preset
+
+            store = store_for(project_id)
+            preset = EditorPresetStore(workspace).get(preset_id)
+            audit = {"preset_id": preset_id, "expected_revision": expected_revision}
+            with store.audited("apply_editor_preset", **audit):
+                result = apply_preset(store, preset, expected_revision)
+            return result.model_dump(mode="json")
+        except EngineException as exc:
+            raise ToolError(exc.error.model_dump_json()) from exc
+
+    @server.tool()
+    def list_variants(project_id: str) -> dict[str, Any]:
+        """List variants of the main edit (alternative hooks, languages, localized shots).
+
+        Each variant stores overrides on the shared body and is computed from the current main revision,
+        so body edits reach every variant. ``status`` says whether it fits the current main edit.
+        """
+        try:
+            store = store_for(project_id)
+            service = VariantService(store)
+            items = []
+            for variant in service.list():
+                view = service.view(variant.id)
+                items.append(
+                    {
+                        "variant": variant.model_dump(mode="json"),
+                        "main_revision": view.main_revision,
+                        "renderable": view.renderable,
+                        "errors": [i.message for i in view.issues if i.severity == "error"],
+                        "pending_requests": view.pending_requests,
+                    }
+                )
+            return {"variants": items}
+        except EngineException as exc:
+            raise ToolError(exc.error.model_dump_json()) from exc
+
+    @server.tool()
+    def create_variant(
+        project_id: str,
+        name: str,
+        kind: VariantKind,
+        language: str | None = None,
+        note: str = "",
+    ) -> dict[str, Any]:
+        """Create a variant of the main edit. It starts identical to the main edit (no overrides).
+
+        Then call update_variant to give it a different hook, asset swaps (localized B-roll, a voice line
+        in another language) or captions off. Variant-only files are requested with ``variant_id`` in
+        the asset_requests block; they gate only that variant.
+        """
+        try:
+            store = store_for(project_id)
+            with store.audited("create_variant", kind=kind.value):
+                variant = VariantService(store).create(name, kind, language, note)
+            return variant.model_dump(mode="json")
+        except EngineException as exc:
+            raise ToolError(exc.error.model_dump_json()) from exc
+
+    @server.tool()
+    def update_variant(
+        project_id: str,
+        variant_id: str,
+        overrides: VariantOverrides,
+        expected_revision: int,
+        summary: str = "",
+    ) -> dict[str, Any]:
+        """Save a variant's overrides as its next revision.
+
+        ``hook_replaces_clips``: how many leading main V1 clips the new hook replaces. ``hook_clips``: the
+        hook's V1 clips in order (positions are laid out from frame 0). Everything after the hook shifts
+        by the length difference; overlays that started inside the replaced hook are dropped, except
+        music on A2. ``asset_swaps``: main overlay asset ID -> replacement asset ID (V2/A2/A3/A4).
+        ``hook_overlays``: extra overlays in the variant's own output time. ``captions``: "keep" (the hook
+        gets captions from its transcript) or "off". Refused if the result does not validate against the
+        current main edit. Returns the computed variant with its issues.
+        """
+        try:
+            store = store_for(project_id)
+            with store.audited("update_variant", variant_id=variant_id, expected_revision=expected_revision):
+                view = VariantService(store).update(variant_id, overrides, expected_revision, summary)
+            return view.model_dump(mode="json")
+        except EngineException as exc:
+            raise ToolError(exc.error.model_dump_json()) from exc
+
+    @server.tool()
+    def get_variant(
+        project_id: str,
+        variant_id: str,
+        main_revision: int | None = None,
+        variant_revision: int | None = None,
+    ) -> dict[str, Any]:
+        """Read a variant computed against a main revision (default: both current): its overrides, the
+        computed timeline, issues, dropped main clips and pending asset requests."""
+        try:
+            view = VariantService(store_for(project_id)).view(variant_id, main_revision, variant_revision)
+            return view.model_dump(mode="json")
+        except EngineException as exc:
+            raise ToolError(exc.error.model_dump_json()) from exc
 
     @server.tool()
     def list_transitions() -> dict[str, Any]:

@@ -285,3 +285,65 @@ def test_desktop_operation_replaces_a_file(tmp_path: Path, media_dir: Path) -> N
         assert saved["links"] == {"gen_still": second.id}
     finally:
         service.http.server_close()
+
+
+# ---- review notes (roadmap Phase 2c: asset review against the brief) -----------------------------
+
+
+@pytest.mark.media
+def test_review_note_is_saved_with_the_approval_and_belongs_to_that_file(
+    project: tuple[ProjectStore, str, str], media_dir: Path, tmp_path: Path
+) -> None:
+    store, storyboard, _ = project
+    store.link_asset_request("broll_01_storyboard", storyboard, _version(store))
+    approved = store.approve_asset_request("broll_01_storyboard", _version(store), "  Frames 1-3 only  ")
+    assert approved.approved == ["broll_01_storyboard"]
+    assert approved.review_notes["broll_01_storyboard"].model_dump() == {
+        "asset_id": storyboard,
+        "text": "Frames 1-3 only",
+    }
+    assert ProjectStore(store.root).asset_checklist().review_notes == approved.review_notes
+
+    # Approving again without a note changes nothing; with a note it replaces the note.
+    assert store.approve_asset_request("broll_01_storyboard", approved.version) == approved
+    edited = store.approve_asset_request("broll_01_storyboard", approved.version, "Frame 2 is best")
+    assert edited.version == approved.version + 1
+    assert edited.review_notes["broll_01_storyboard"].text == "Frame 2 is best"
+
+    # Replacing the file drops the note with the approval; so does a reset.
+    other = store.import_asset(media_dir / "still_storyboard_9x16.png", AssetRole.REFERENCE, EXTERNAL)
+    replaced = store.replace_asset_request_link("broll_01_storyboard", other.id, edited.version)
+    assert replaced.review_notes == {} and replaced.approved == []
+    noted = store.approve_asset_request("broll_01_storyboard", replaced.version, "Fine")
+    reset = store.reset_asset_request("broll_01_storyboard", noted.version)
+    assert reset.review_notes == {}
+
+    # A note cannot be attached to a file that is not approved, or to a different file.
+    with pytest.raises(ValidationError, match="review note"):
+        AssetChecklist.model_validate(
+            {**noted.model_dump(mode="json"), "approved": [], "review_notes": noted.review_notes}
+        )
+
+
+@pytest.mark.media
+def test_review_note_through_the_desktop_bridge(
+    project: tuple[ProjectStore, str, str], tmp_path: Path
+) -> None:
+    store, storyboard, _ = project
+    store.link_asset_request("broll_01_storyboard", storyboard, _version(store))
+    service = DesktopService(tmp_path)
+    try:
+        saved = service._desktop_call(
+            "approve_asset_request",
+            {
+                "project_id": store.project_id,
+                "request_id": "broll_01_storyboard",
+                "expected_version": _version(store),
+                "note": "Use frames 1-3",
+            },
+        )
+        assert saved["review_notes"] == {
+            "broll_01_storyboard": {"asset_id": storyboard, "text": "Use frames 1-3"}
+        }
+    finally:
+        service.http.server_close()

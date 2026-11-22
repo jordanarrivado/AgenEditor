@@ -5,7 +5,10 @@
       "enum": [
         "clean_white",
         "bold_yellow",
-        "boxed"
+        "boxed",
+        "top_clean",
+        "big_center",
+        "lower_minimal"
       ],
       "title": "CaptionPreset",
       "type": "string"

@@ -33,6 +33,7 @@ from ageneditor.contracts import (
     Provenance,
     QAReport,
     RenderProfile,
+    ReviewNote,
     Timeline,
     Transcript,
     ValidationIssue,
@@ -147,6 +148,7 @@ class ProjectStore:
                 );
                 CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY, data TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS qa_reports(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS preview_qa_reports(job_id TEXT PRIMARY KEY, data TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS transcripts(
                     id TEXT PRIMARY KEY, asset_id TEXT NOT NULL, source_sha256 TEXT NOT NULL,
                     model_preset TEXT NOT NULL, data TEXT NOT NULL
@@ -156,6 +158,15 @@ class ProjectStore:
                 CREATE TABLE IF NOT EXISTS edit_plan_attempts(
                     id TEXT PRIMARY KEY, revision INTEGER NOT NULL, result_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS project_settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS chat_messages(
+                    id TEXT PRIMARY KEY, created_at TEXT NOT NULL, data TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS chat_proposals(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS variants(
+                    id TEXT NOT NULL, revision INTEGER NOT NULL, data TEXT NOT NULL,
+                    created_at TEXT NOT NULL, PRIMARY KEY (id, revision)
                 );
                 CREATE TABLE IF NOT EXISTS agent_events(
                     id TEXT PRIMARY KEY, action TEXT NOT NULL, args_json TEXT NOT NULL,
@@ -243,11 +254,16 @@ class ProjectStore:
             kind = AssetKind.IMAGE
         else:
             kind = AssetKind.VIDEO if metadata.video else AssetKind.AUDIO
-        if kind is AssetKind.VIDEO and role in {AssetRole.MUSIC, AssetRole.SFX}:
+        if kind is AssetKind.VIDEO and role in {AssetRole.MUSIC, AssetRole.SFX, AssetRole.VOICE}:
             raise EngineException(ErrorCode.INVALID_ARGUMENT, f"video asset cannot have {role} role")
-        if kind is AssetKind.AUDIO and role not in {AssetRole.MUSIC, AssetRole.REFERENCE, AssetRole.SFX}:
+        if kind is AssetKind.AUDIO and role not in {
+            AssetRole.MUSIC,
+            AssetRole.REFERENCE,
+            AssetRole.SFX,
+            AssetRole.VOICE,
+        }:
             raise EngineException(
-                ErrorCode.INVALID_ARGUMENT, "audio-only assets must use music, sfx or reference role"
+                ErrorCode.INVALID_ARGUMENT, "audio-only assets must use music, sfx, voice or reference role"
             )
         if kind is AssetKind.IMAGE and role not in {AssetRole.BROLL, AssetRole.LOGO, AssetRole.REFERENCE}:
             raise EngineException(
@@ -436,6 +452,13 @@ class ProjectStore:
 
     def _validate_checklist_links(self, db: sqlite3.Connection, checklist: AssetChecklist) -> None:
         requests = {request.id: request for request in checklist.requests}
+        for request in checklist.requests:
+            if request.variant_id is not None and (
+                db.execute("SELECT 1 FROM variants WHERE id=?", (request.variant_id,)).fetchone() is None
+            ):
+                raise EngineException(
+                    ErrorCode.INVALID_ARGUMENT, f"request {request.id!r} names an unknown variant"
+                )
         linked_assets: set[str] = set()
         for request_id, link in checklist.links.items():
             if link == "dropped":
@@ -454,6 +477,7 @@ class ProjectStore:
                 or asset.provenance.origin is not AssetOrigin.GENERATED_EXTERNAL
                 or asset.kind.value != requests[request_id].kind
                 or (requests[request_id].kind == "video" and asset.role is not AssetRole.BROLL)
+                or (requests[request_id].kind == "audio" and asset.role is not AssetRole.VOICE)
             ):
                 raise EngineException(
                     ErrorCode.INVALID_ARGUMENT,
@@ -545,14 +569,22 @@ class ProjectStore:
                     "links": {**current.links, request_id: asset_id},
                     "approved": [key for key in current.approved if key != request_id],
                     "accepted": {key: value for key, value in current.accepted.items() if key != request_id},
+                    "review_notes": {
+                        key: value for key, value in current.review_notes.items() if key != request_id
+                    },
                 }
             )
             self._validate_checklist_links(db, updated)
             self._save_checklist_in(db, updated)
         return updated
 
-    def approve_asset_request(self, request_id: str, expected_version: int) -> AssetChecklist:
-        """Record the person's approval of the file linked to a request."""
+    def approve_asset_request(
+        self, request_id: str, expected_version: int, note: str | None = None
+    ) -> AssetChecklist:
+        """Record the person's approval of the file linked to a request, with an optional review note.
+
+        Approving again with a note replaces the note; without one it changes nothing.
+        """
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             current = self._checklist_in(db)
@@ -562,10 +594,20 @@ class ProjectStore:
                 raise EngineException(
                     ErrorCode.INVALID_ARGUMENT, "add a file to this request before approving it"
                 )
-            if request_id in current.approved:
+            text = (note or "").strip()
+            notes = dict(current.review_notes)
+            if text:
+                notes[request_id] = ReviewNote(asset_id=link, text=text)
+            if request_id in current.approved and notes == current.review_notes:
                 return current
-            updated = current.model_copy(
-                update={"version": current.version + 1, "approved": [*current.approved, request_id]}
+            approved = current.approved if request_id in current.approved else [*current.approved, request_id]
+            updated = AssetChecklist.model_validate(
+                {
+                    **current.model_dump(),
+                    "version": current.version + 1,
+                    "approved": approved,
+                    "review_notes": notes,
+                }
             )
             self._save_checklist_in(db, updated)
         return updated
@@ -592,6 +634,9 @@ class ProjectStore:
                     "links": links,
                     "approved": [key for key in current.approved if key != request_id],
                     "accepted": {key: value for key, value in current.accepted.items() if key != request_id},
+                    "review_notes": {
+                        key: value for key, value in current.review_notes.items() if key != request_id
+                    },
                 }
             )
             self._save_checklist_in(db, updated)
@@ -676,23 +721,49 @@ class ProjectStore:
             )
         return updated
 
-    def require_asset_requests_ready(self) -> None:
+    def require_asset_requests_ready(self, variant_id: str | None = None) -> None:
         with self._connect() as db:
-            self._require_asset_requests_ready_in(db)
+            self._require_asset_requests_ready_in(db, variant_id)
 
-    def _require_asset_requests_ready_in(self, db: sqlite3.Connection) -> None:
+    def pending_asset_requests(self, variant_id: str | None = None) -> list[str]:
+        """Request IDs that block the main edit, or the main edit plus one variant."""
+        with self._connect() as db:
+            checklist = self._checklist_in(db)
+        return [request.id for request in self._scoped_requests(checklist, variant_id, pending_only=True)]
+
+    @staticmethod
+    def _scoped_requests(checklist: AssetChecklist, variant_id: str | None, pending_only: bool = False):
+        """The main edit's requests, plus one variant's own when ``variant_id`` is given."""
+        if not checklist.configured:
+            return []
+        scoped = [r for r in checklist.requests if r.variant_id is None or r.variant_id == variant_id]
+        if not pending_only:
+            return scoped
+        return [
+            r
+            for r in scoped
+            if r.id not in checklist.links
+            or (
+                checklist.review_required
+                and checklist.links[r.id] != "dropped"
+                and r.id not in checklist.approved
+            )
+        ]
+
+    def _require_asset_requests_ready_in(self, db: sqlite3.Connection, variant_id: str | None = None) -> None:
         checklist = self._checklist_in(db)
         if not checklist.configured:
             return
         self._validate_checklist_links(db, checklist)
-        if any(request.id not in checklist.links for request in checklist.requests):
+        scoped = self._scoped_requests(checklist, variant_id)
+        if any(request.id not in checklist.links for request in scoped):
             raise EngineException(
                 ErrorCode.INVALID_ARGUMENT,
                 "asset requests are pending; import and link each file or drop its request",
             )
         if checklist.review_required and any(
             checklist.links[request.id] != "dropped" and request.id not in checklist.approved
-            for request in checklist.requests
+            for request in scoped
         ):
             raise EngineException(
                 ErrorCode.INVALID_ARGUMENT,
@@ -710,6 +781,35 @@ class ProjectStore:
             updated = Asset.model_validate({**current.model_dump(mode="json"), "labels": labels})
             db.execute("UPDATE assets SET data=? WHERE id=?", (updated.model_dump_json(), asset_id))
         return updated
+
+    #: Project-level settings a person changes in the desktop app (never media or edits).
+    SETTING_KEYS = frozenset({"archived", "editor_preset_id", "chat_consent", "client_name"})
+
+    def setting(self, key: str) -> str | None:
+        with self._connect() as db:
+            row = db.execute("SELECT value FROM project_settings WHERE key=?", (key,)).fetchone()
+        return None if row is None else str(row[0])
+
+    def set_setting(self, key: str, value: str | None) -> None:
+        if key not in self.SETTING_KEYS:
+            raise EngineException(ErrorCode.INVALID_ARGUMENT, "unknown project setting")
+        with self._connect() as db:
+            if value is None:
+                db.execute("DELETE FROM project_settings WHERE key=?", (key,))
+            else:
+                db.execute(
+                    "INSERT INTO project_settings VALUES (?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (key, value),
+                )
+
+    def rename(self, name: str) -> None:
+        """Change the display name only; the folder, ID and history stay as they are."""
+        name = name.strip()
+        if not name or len(name) > 80:
+            raise EngineException(ErrorCode.INVALID_ARGUMENT, "project name must be 1 to 80 characters")
+        with self._connect() as db:
+            db.execute("UPDATE project SET name=?", (name,))
 
     def current_revision(self) -> int:
         with self._connect() as db:
@@ -803,7 +903,7 @@ class ProjectStore:
         with self._connect() as db:
             if job.kind in {JobKind.FINAL_RENDER, JobKind.PREVIEW_RENDER}:
                 db.execute("BEGIN IMMEDIATE")
-                self._require_asset_requests_ready_in(db)
+                self._require_asset_requests_ready_in(db, job.variant_id)
             db.execute("INSERT INTO jobs VALUES (?, ?)", (job.id, job.model_dump_json()))
 
     def update_job(self, job: Job) -> None:

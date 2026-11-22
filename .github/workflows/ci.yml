@@ -36,19 +36,57 @@ jobs:
       - name: Install FFmpeg
         run: choco install ffmpeg --no-progress -y
       - name: Sync
-        run: uv sync --locked --extra transcribe
+        run: uv sync --locked --extra transcribe --extra ai
       - name: Lint
         run: |
-          uv run ruff check packages tests/engine scripts
-          uv run ruff format --check packages tests/engine scripts
+          uv run --locked --extra transcribe --extra ai ruff check packages tests/engine scripts
+          uv run --locked --extra transcribe --extra ai ruff format --check packages tests/engine scripts
       - name: Test (generates fixture media)
-        run: uv run pytest
+        run: uv run --locked --extra transcribe --extra ai pytest
+      - name: OpenTimelineIO reference compatibility
+        run: uv run --locked --extra transcribe --extra ai --group interop python -c "import opentimelineio; import pytest; raise SystemExit(pytest.main(['tests/engine/test_otio.py']))"
       - name: Licence report (informational; the release workflow enforces it)
-        run: uv run python scripts/license_report.py --out license-report.md
+        run: uv run --locked --extra transcribe --extra ai python scripts/license_report.py --out license-report.md
       - uses: actions/upload-artifact@v4
         with:
           name: license-report
           path: license-report.md
+
+  portability:
+    # Informational (Phase 6): does the engine pass and does the desktop shell compile off Windows?
+    # No macOS or Linux package is built; the pinned FFmpeg build and installer are Windows-only.
+    name: Portability check (${{ matrix.os }}, informational)
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install FFmpeg and desktop build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libwebkit2gtk-4.1-dev libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev
+      - name: Install FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - name: Engine tests
+        run: |
+          uv sync --locked
+          uv run pytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Desktop shell compiles and its unit tests pass
+        run: |
+          npm ci
+          npm run build
+          cd apps/desktop/src-tauri
+          cargo test --locked
 
   ui:
     name: Static UI (Node, Windows)

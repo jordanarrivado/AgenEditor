@@ -1,0 +1,244 @@
+{
+  "$defs": {
+    "DeliveryFile": {
+      "additionalProperties": false,
+      "properties": {
+        "captions": {
+          "default": false,
+          "title": "Captions",
+          "type": "boolean"
+        },
+        "duration_frames": {
+          "minimum": 0,
+          "title": "Duration Frames",
+          "type": "integer"
+        },
+        "job_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z0-9_-]{1,120}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "timeline_revision": {
+          "minimum": 0,
+          "title": "Timeline Revision",
+          "type": "integer"
+        },
+        "variant_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Variant Id"
+        },
+        "variant_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Variant Revision"
+        }
+      },
+      "required": [
+        "job_id",
+        "name",
+        "label",
+        "timeline_revision",
+        "duration_frames"
+      ],
+      "title": "DeliveryFile",
+      "type": "object"
+    },
+    "ExcludedRender": {
+      "additionalProperties": false,
+      "properties": {
+        "job_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "reason"
+      ],
+      "title": "ExcludedRender",
+      "type": "object"
+    },
+    "GeneratedMaterial": {
+      "additionalProperties": false,
+      "description": "A file made in an outside tool that appears in delivered files; always labelled as such.",
+      "properties": {
+        "asset_id": {
+          "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "files": {
+          "items": {
+            "pattern": "^[A-Za-z0-9_-]{1,120}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Files",
+          "type": "array"
+        },
+        "label": {
+          "const": "AI-generated (external)",
+          "default": "AI-generated (external)",
+          "title": "Label",
+          "type": "string"
+        },
+        "original_filename": {
+          "maxLength": 255,
+          "title": "Original Filename",
+          "type": "string"
+        },
+        "tool_name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "original_filename",
+        "tool_name",
+        "files"
+      ],
+      "title": "GeneratedMaterial",
+      "type": "object"
+    },
+    "KnownIssue": {
+      "additionalProperties": false,
+      "description": "One line of the known-issues note, with where it was recorded.",
+      "properties": {
+        "files": {
+          "items": {
+            "pattern": "^[A-Za-z0-9_-]{1,120}$",
+            "type": "string"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "message": {
+          "maxLength": 1200,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "accepted",
+            "technical_qa",
+            "editorial_qa",
+            "preview_check"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "message"
+      ],
+      "title": "KnownIssue",
+      "type": "object"
+    }
+  },
+  "$id": "https://ageneditor.local/schemas/project_delivery_plan.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "excluded": {
+      "items": {
+        "$ref": "#/$defs/ExcludedRender"
+      },
+      "title": "Excluded",
+      "type": "array"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/DeliveryFile"
+      },
+      "maxItems": 25,
+      "title": "Files",
+      "type": "array"
+    },
+    "folder": {
+      "pattern": "^[A-Za-z0-9_-]{1,120}$",
+      "title": "Folder",
+      "type": "string"
+    },
+    "generated": {
+      "items": {
+        "$ref": "#/$defs/GeneratedMaterial"
+      },
+      "title": "Generated",
+      "type": "array"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/KnownIssue"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "note": {
+      "maxLength": 200000,
+      "title": "Note",
+      "type": "string"
+    },
+    "project_id": {
+      "pattern": "^[a-z0-9][a-z0-9_\\-]{0,63}$",
+      "title": "Project Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "project_id",
+    "folder",
+    "note"
+  ],
+  "title": "ProjectDeliveryPlan",
+  "type": "object"
+}

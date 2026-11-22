@@ -158,6 +158,19 @@ describe('asset requests (external generation hand-off)', () => {
 
   it('rejects missing blocks, bad kinds and duplicate ids', () => {
     expect(parseAssetRequests('no json here').ok).toBe(false);
+    // Voice lines need the exact words; other kinds may not carry a line.
+    expect(parseAssetRequests('{"asset_requests": [{"id": "v", "kind": "audio", "prompt": "calm"}]}').ok).toBe(false);
+    expect(parseAssetRequests('{"asset_requests": [{"id": "i", "kind": "image", "prompt": "x", "line": "hi"}]}').ok).toBe(false);
+    const voice = parseAssetRequests('{"asset_requests": [{"id": "voice_01", "kind": "audio", "prompt": "calm", "line": " Hello there. "}]}');
+    if (!voice.ok) throw new Error(voice.error);
+    expect(voice.requests[0]).toMatchObject({ kind: 'audio', line: 'Hello there.' });
+    expect(generatorsFor('audio')).toEqual(['aistudio']);
+    // A variant-only request keeps its variant id; a malformed one is refused.
+    const scoped = parseAssetRequests('{"asset_requests": [{"id": "shot_es", "kind": "video", "prompt": "x", "variant_id": "variant_ab12"}]}');
+    if (!scoped.ok) throw new Error(scoped.error);
+    expect(scoped.requests[0].variant_id).toBe('variant_ab12');
+    expect(parseAssetRequests('{"asset_requests": [{"id": "s", "kind": "video", "prompt": "x", "variant_id": "Bad Id"}]}').ok).toBe(false);
+    expect(buildGeneratorPrompt(voice.requests[0], 'aistudio')).toContain('"Hello there."');
     expect(parseAssetRequests('{"asset_requests": [{"id": "a", "kind": "music", "prompt": "x"}]}').ok).toBe(false);
     expect(
       parseAssetRequests('{"asset_requests": [{"id": "a", "kind": "image", "prompt": "x"}, {"id": "a", "kind": "image", "prompt": "y"}]}').ok
